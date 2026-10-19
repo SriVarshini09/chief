@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0c11">
+<title>Chief - Stage</title>
+<style>
+  :root {
+    --bg: #0a0c11; --panel: #121620; --panel2: #171c28; --line: #262d3c;
+    --text: #f4f6fa; --muted: #a2adc0; --dim: #6c778b;
+    --accent: #6ea0ff; --ok: #3ddc97; --warn: #ffc857; --bad: #ff6b7a; --violet: #b69cff;
+  }
+  * { box-sizing: border-box; }
+  html { font-size: clamp(13px, calc(8px + 0.65vw), 30px); }
+  body {
+    margin: 0; height: 100vh; overflow: hidden; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.3;
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: .8rem; padding: .9rem 1.2rem 1rem;
+  }
+  .empty { color: var(--dim); font-size: 1.05rem; padding: .4rem 0; }
+
+  /* header */
+  header { display: flex; align-items: center; gap: 1rem; }
+  .brand { font-weight: 800; letter-spacing: .22em; font-size: 1.25rem; }
+  .live { width: .7rem; height: .7rem; border-radius: 50%; background: var(--dim); }
+  .live.on { background: var(--ok); box-shadow: 0 0 .8rem var(--ok); }
+  .live.busy { background: var(--warn); box-shadow: 0 0 .8rem var(--warn); animation: blink 1s infinite; }
+  .live.off { background: var(--bad); }
+  #now { flex: 1; color: var(--muted); font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip { border: 1px solid var(--line); border-radius: 99px; padding: .1rem .7rem; color: var(--muted); font-size: .85rem; }
+  .chip:empty { display: none; }
+  #modeBadge {
+    font-weight: 800; letter-spacing: .18em; font-size: 1.15rem; padding: .15rem .9rem; border-radius: .5rem;
+    border: 2px solid var(--dim); color: var(--muted);
+  }
+  #modeBadge.live { border-color: var(--ok); color: var(--ok); }
+  #modeBadge.mock { border-color: var(--warn); color: var(--warn); }
+  #modeBadge.cached { border-color: var(--violet); color: var(--violet); }
+
+  /* grid */
+  main { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: .8rem; min-height: 0; }
+  .stack { display: grid; grid-template-rows: 1fr 1fr; gap: .8rem; min-height: 0; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: .9rem; padding: .8rem 1rem;
+    display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  }
+  .panel > header { margin-bottom: .6rem; gap: .6rem; }
+  .panel h2 { margin: 0; font-size: .95rem; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .panel h2 b { color: var(--text); font-weight: 700; margin-left: .4rem; }
+  .spacer { flex: 1; }
+  .pill { display: none; font-size: .8rem; color: var(--warn); align-items: center; gap: .4rem; }
+  .pill.on { display: inline-flex; }
+  .pill::before { content: ""; width: .5rem; height: .5rem; border-radius: 50%; background: var(--warn); animation: blink 1s infinite; }
+  .scroll { flex: 1; min-height: 0; overflow: hidden auto; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  /* honesty tags */
+  .tags { display: inline-flex; gap: .3rem; flex-wrap: wrap; }
+  .tag { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; border-radius: .3rem; padding: 0 .4rem; border: 1px solid; font-weight: 650; }
+  .tag.cached { color: var(--violet); border-color: var(--violet); }
+  .tag.simulated { color: var(--warn); border-color: var(--warn); }
+
+  @keyframes in { from { opacity: 0; transform: translateY(.5rem); } to { opacity: 1; transform: none; } }
+  @keyframes blink { 50% { opacity: .35; } }
+  @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  @keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 1.2rem .15rem var(--glow, var(--ok)); } }
+  .reveal { animation: in .3s ease-out both; }
+  .skeleton {
+    border-radius: .6rem; padding: .7rem .8rem; color: var(--muted); font-size: 1.05rem; margin-bottom: .5rem;
+    background: linear-gradient(90deg, var(--panel2) 30%, #222a3a 50%, var(--panel2) 70%); background-size: 300% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+
+  /* task lanes: a panel holds one lane, or one per parallel task when events carry detail.task */
+  .lane { display: flex; flex-direction: column; min-width: 0; }
+  .lanehead { display: none; align-items: center; gap: .5rem; padding: .15rem .1rem .3rem; }
+  .multi > .lane { border-left: .25rem solid var(--lane, var(--line)); padding-left: .6rem; margin-bottom: .7rem; }
+  .lane[data-task]:not([data-task=""]) > .lanehead, .multi > .lane > .lanehead { display: flex; }
+  .taskchip { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; color: var(--lane, var(--muted)); }
+  .lanework { display: none; font-size: .8rem; color: var(--warn); }
+  .lane.working .lanework { display: inline; animation: blink 1s infinite; }
+  #log { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #log .lane { flex: 1 1 0; min-height: 0; }
+  #log.multi .lane { margin-bottom: .3rem; }
+  #log .lanebody { flex: 1; min-height: 0; overflow: hidden auto; scrollbar-width: none; }
+  #log .lanebody::-webkit-scrollbar { display: none; }
+
+  /* inbox */
+  .mail { background: var(--panel2); border-radius: .6rem; padding: .55rem .8rem; margin-bottom: .5rem; border-left: .3rem solid var(--line); }
+  .mail.unread { border-left-color: var(--accent); }
+  .mail .top { display: flex; gap: .6rem; color: var(--muted); font-size: .9rem; align-items: baseline; }
+  .mail .from { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mail .subj { font-size: 1.25rem; font-weight: 650; margin: .1rem 0; }
+  .mail .snip { color: var(--muted); font-size: 1rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* calendar */
+  .cal { flex: 1; min-height: 0; display: grid; grid-template-columns: 3.2rem minmax(0, .7fr) minmax(0, 1.6fr); gap: .5rem; grid-template-rows: auto minmax(0, 1fr); }
+  .dayhead { font-size: 1.05rem; font-weight: 650; padding-bottom: .3rem; white-space: nowrap; }
+  .dayhead small { display: block; color: var(--muted); font-weight: 400; font-size: .8rem; }
+  .dayhead.prev { color: var(--muted); }
+  .axis, .col { position: relative; }
+  .axis span { position: absolute; right: 0; transform: translateY(-50%); font-size: .8rem; color: var(--dim); }
+  .col { background: var(--panel2); border-radius: .5rem; }
+  .col.prev { opacity: .6; }
+  .hline { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); }
+  .block {
+    position: absolute; overflow: hidden; border-radius: .4rem; padding: .15rem .4rem; border-left: .3rem solid var(--accent);
+    background: #20315a; font-size: 1rem; font-weight: 650; line-height: 1.12; overflow-wrap: anywhere; transition: top .3s, height .3s;
+  }
+  .block small { display: block; font-weight: 400; color: #d3defa; font-size: .78em; }
+  .block.compact small { display: none; }
+  .block.async { background: repeating-linear-gradient(135deg, #1f3a63 0 .55rem, #2b5086 .55rem 1.1rem); border-left-color: var(--accent); }
+  .block.walk { background: #17432f; border-left-color: var(--ok); }
+  .block.focus { background: #382a63; border-left-color: var(--violet); }
+  .block.added, .block.renamed { z-index: 2; --glow: var(--ok); animation: in .3s ease-out both, glow 1.1s ease-in-out 3; outline: 2px solid var(--ok); }
+  .block.renamed { --glow: var(--warn); outline-color: var(--warn); }
+  .block .badge { display: inline-block; font-size: .62em; letter-spacing: .08em; padding: 0 .3rem; margin-right: .3rem; border-radius: .25rem; color: #07210f; background: var(--ok); vertical-align: .1em; }
+  .block.renamed .badge { background: var(--warn); color: #2a1d00; }
+
+  /* research */
+  .search { background: var(--panel2); border-radius: .6rem; padding: .6rem .8rem; margin-bottom: .6rem; }
+  .search .q { font-size: 1.15rem; font-weight: 650; }
+  .search .qs { display: flex; flex-wrap: wrap; gap: .3rem; margin: .3rem 0; }
+  .search .qs span { font-size: .8rem; color: var(--accent); border: 1px solid #2c3f6b; border-radius: 99px; padding: 0 .55rem; }
+  .search .st { display: flex; gap: .5rem; align-items: center; }
+  .search .status { color: var(--warn); font-size: .9rem; }
+  .search .status.done { color: var(--ok); }
+  .search .status.bad { color: var(--bad); }
+  .result { border-top: 1px solid var(--line); padding: .4rem 0 .1rem; margin-top: .4rem; }
+  .result .t { font-size: 1.05rem; font-weight: 650; }
+  .result .u { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; color: var(--accent); word-break: break-all; }
+  .result .x { color: var(--muted); font-size: .9rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* step log */
+  .row { display: grid; grid-template-columns: 4.3rem 5.2rem 1fr; gap: .5rem; align-items: baseline; padding: .18rem 0; font-size: .95rem; }
+  .row time { color: var(--dim); font-variant-numeric: tabular-nums; font-size: .8rem; }
+  .kind { font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; border-radius: .3rem; padding: .02rem .4rem; text-align: center; background: #232a39; color: var(--muted); }
+  .k-heard .kind { background: #2b2f55; color: #c3c9ff; }
+  .k-step .kind { background: #263349; color: var(--accent); }
+  .k-working .kind { background: #3d3216; color: var(--warn); }
+  .k-read .kind { background: #16372e; color: var(--ok); }
+  .k-write .kind, .k-approved .kind { background: var(--ok); color: #05210f; font-weight: 700; }
+  .k-proposal .kind { background: #3d3216; color: var(--warn); font-weight: 700; }
+  .k-skipped .kind { background: #2c2c33; color: var(--muted); }
+  .k-say .kind { background: #2b2f55; color: #c3c9ff; }
+  .k-error .kind { background: #4a1d26; color: var(--bad); }
+  .k-working .ttl::after { content: " ..."; animation: blink 1s infinite; }
+  .k-error .ttl { color: var(--bad); }
+  .cell { min-width: 0; }
+  .cell .tags { margin-top: .1rem; }
+  .ttl { word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* caption */
+  footer { display: grid; grid-template-columns: 1fr; gap: 1rem; min-height: 6rem; max-height: 38vh; }
+  footer.has-prop { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+  footer.has-prop.many { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
+  .heard { color: var(--muted); font-size: 1.2rem; min-height: 1.5rem; }
+  .heard b { color: var(--accent); }
+  #say { font-size: 2.6rem; font-weight: 650; line-height: 1.18; max-height: 13rem; overflow: hidden; }
+  #say.m { font-size: 2.1rem; }
+  #say.l { font-size: 1.7rem; }
+  #say.xl { font-size: 1.4rem; }
+  #say.idle { color: var(--dim); font-weight: 400; }
+  #props { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: .7rem; align-items: start; min-height: 0; }
+  #props[hidden] { display: none; }
+  .prop { background: var(--panel); border: 2px solid var(--warn); border-radius: .9rem; padding: .6rem 1rem; max-height: 13rem; overflow: hidden; animation: in .3s ease-out both; }
+  .prop.ro { border-color: var(--accent); }
+  .prop h3 { margin: 0 0 .3rem; font-size: .85rem; letter-spacing: .14em; text-transform: uppercase; color: var(--warn); display: flex; gap: .5rem; align-items: center; }
+  .prop.ro h3 { color: var(--accent); }
+  .prop ul { margin: 0; padding-left: 1.2rem; font-size: 1.1rem; }
+  .prop li { margin: .1rem 0; }
+  .prop .more { color: var(--muted); font-size: .9rem; }
+  .prop .src { color: var(--muted); font-size: .8rem; margin-top: .2rem; word-break: break-all; }
+  .prop .hint { color: var(--muted); font-size: .85rem; margin-top: .2rem; }
+
+  @media (max-width: 1000px) {
+    body { height: auto; overflow: auto; }
+    main { grid-template-columns: 1fr; }
+    .panel { min-height: 22rem; }
+    footer.has-prop, footer.has-prop.many { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: .01s !important; animation-iteration-count: 1 !important; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="live" id="live"></span>
+  <span class="brand">CHIEF</span>
+  <span id="now"></span>
+  <span class="chip" id="mode"></span>
+  <span id="modeBadge">...</span>
+</header>
+
+<main>
+  <section class="panel" id="p-inbox">
+    <header><h2>Inbox<b id="inboxCount"></b></h2><span class="tags" id="tags-inbox"></span><span class="spacer"></span><span class="pill" id="pill-inbox">working</span></header>
+    <div class="scroll" id="inbox"><div class="empty">Nothing read yet. Ask: "what's in my inbox?"</div></div>
+  </section>
+
+  <section class="panel" id="p-cal">
+    <header><h2>Calendar</h2><span class="tags" id="tags-cal"></span><span class="spacer"></span><span class="pill" id="pill-cal">working</span></header>
+    <div class="cal" id="cal"><div class="empty" style="grid-column: 1 / -1">Loading calendar...</div></div>
+  </section>
+
+  <div class="stack">
+    <section class="panel" id="p-research">
+      <header><h2>Research</h2><span class="tags" id="tags-research"></span><span class="spacer"></span><span class="pill" id="pill-research">searching</span></header>
+      <div class="scroll" id="research"><div class="empty">No searches yet.</div></div>
+    </section>
+    <section class="panel" id="p-log">
+      <header><h2>Step log</h2><span class="spacer"></span></header>
+      <div id="log"></div>
+    </section>
+  </div>
+</main>
+
+<footer id="footer">
+  <div>
+    <div class="heard" id="heard"></div>
+    <div id="say" class="idle">Waiting for you. Ask Chief something.</div>
+  </div>
+  <div id="props" hidden></div>
+</footer>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const TOKEN = new URLSearchParams(location.search).get("token") || "";
+  const HEADERS = { "X-Chief-Token": TOKEN };
+
+  const POLL_MS = 500;       // how often /stage/events is asked for news
+  const PACE_MS = 260;       // longest pause between revealed events (a fast mock run should still look like work)
+  const BACKLOG_MS = 3500;   // a long backlog is drained within this, so the screen never falls behind
+  const FLASH_MS = 90000;    // how long an added/renamed calendar block stays marked (or until you say something new)
+
+  const PANEL_OF = {
+    fetch_emails: "inbox", fetch_thread: "inbox", search_web: "research",
+    list_events: "cal", find_free_slots: "cal", patch_event: "cal", create_event: "cal", delete_event: "cal",
+  };
+  const CAL_WRITES = new Set(["patch_event", "create_event", "delete_event"]);
+  const MODES = { live: ["LIVE", "live"], mock: ["MOCK", "mock"], demo: ["CACHED", "cached"], cached: ["CACHED", "cached"] };
+
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  async function api(path) {
+    const res = await fetch(path, { headers: HEADERS, cache: "no-store" });
+    if (!res.ok) throw new Error(res.status === 401 ? "token" : String(res.status));
+    return res.json();
+  }
+
+  // Events may or may not carry these (other sessions add them): every read is defensive.
+  const detailOf = (e) => (e && e.detail && typeof e.detail === "object" ? e.detail : {});
+  const taskOf = (e) => { const t = detailOf(e).task; return t == null || t === "" ? "" : String(t).slice(0, 14); };
+  const flagged = (e, k) => { const v = detailOf(e)[k]; return v === true || v === "true"; };
+
+  // ---- time helpers (strings only: the mock clock is not the browser clock) ----------------
+  function fmtTime(iso) {
+    let h = +iso.slice(11, 13); const m = iso.slice(14, 16);
+    const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12;
+    return h + ":" + m + " " + ap;
+  }
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  function fmtDay(iso) {
+    const d = new Date(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10));
+    return DAYS[d.getDay()] + " " + MONTHS[d.getMonth()] + " " + d.getDate();
+  }
+  const fmtStamp = (iso) => MONTHS[+iso.slice(5, 7) - 1] + " " + +iso.slice(8, 10) + ", " + fmtTime(iso);
+  const minutesOf = (iso) => +iso.slice(11, 13) * 60 + +iso.slice(14, 16);
+
+  // ---- state ----------------------------------------------------------------------
+  const S = {
+    cursor: 0, first: true, queue: [], draining: false,
+    refs: new Map(),                             // working ref -> {panel, task}
+    active: { inbox: new Set(), cal: new Set(), research: new Set() },
+    lanes: { inbox: new Map(), research: new Map(), log: new Map() },   // panel -> task -> lane
+    panelTags: { inbox: new Set(), cal: new Set(), research: new Set() },
+    pending: new Map(),                          // proposal id -> record (insertion order = age)
+    snapshot: null,                              // calendar: id -> {title}
+    flash: new Map(),                            // calendar block id -> {kind, until}
+    calDay: "",                                  // "" = the next day with events; else the day pinned by a proposal or a write
+    calData: null, calBusy: false, calDirty: false, calSync: false, calSig: "",
+    typer: null,
+  };
+
+  // ---- connection -----------------------------------------------------------------
+  function setLive(state) { $("live").className = "live " + state; }
+
+  function setMode(mode) {
+    const [label, cls] = MODES[String(mode || "").toLowerCase()] || [String(mode || "?").toUpperCase(), ""];
+    $("modeBadge").textContent = label;
+    $("modeBadge").className = cls;
+  }
+
+  async function poll() {
+    try {
+      const d = await api("/stage/events?since=" + S.cursor);
+      setMode(d.mode);
+      $("mode").textContent = "";
+      if (d.last_seq < S.cursor) {          // the server restarted: start over
+        S.cursor = 0; resetScreen();
+      } else {
+        setLive(d.busy || S.queue.length ? "busy" : "on");
+        if (S.first) seedPending(d.pending);
+        if (d.events.length) {
+          S.cursor = d.events[d.events.length - 1].seq;
+          ingest(d.events);
+        }
+        S.first = false;                     // from the second answer on, events are paced, not dumped
+      }
+    } catch (e) {
+      setLive("off");
+      $("mode").textContent = e.message === "token" ? "wrong token" : "reconnecting";
+    }
+    setTimeout(poll, POLL_MS);
+  }
+
+  // Opened mid-demo: proposals still waiting from before the last thing said are known to the server, not to the stream.
+  function seedPending(list) {
+    (Array.isArray(list) ? list : []).forEach((p) => {
+      if (p && p.id && !S.pending.has(p.id)) addProposal(p.id, p, p.summary || "");
+    });
+  }
+
+  function ingest(events) {
+    if (S.first) {
+      // show the current scene at once (from the last thing you said) without replaying history
+      let from = 0;
+      for (let i = events.length - 1; i >= 0; i--) if (events[i].kind === "heard") { from = i; break; }
+      events.slice(from).forEach((e) => apply(e, true));
+      $("now").textContent = "";
+      return;
+    }
+    S.queue.push(...events);
+    if (!S.draining) drain();
+  }
+
+  function drain() {
+    S.draining = true;
+    const step = () => {
+      const e = S.queue.shift();
+      if (!e) { S.draining = false; onIdle(); return; }
+      apply(e, false);
+      setTimeout(step, Math.min(PACE_MS, BACKLOG_MS / (S.queue.length + 1)));
+    };
+    step();
+  }
+
+  function onIdle() {
+    $("now").textContent = "";
+    if (S.calSync) loadCalendar();            // reconcile with the real calendar once the events have all been shown
+  }
+
+  function resetScreen() {
+    S.queue = []; S.draining = false; S.first = true; S.refs.clear();
+    Object.values(S.active).forEach((s) => s.clear());
+    Object.values(S.lanes).forEach((m) => m.clear());
+    Object.values(S.panelTags).forEach((s) => s.clear());
+    ["inbox", "cal", "research"].forEach((p) => $("tags-" + p).replaceChildren());
+    S.pending.clear(); S.flash.clear(); S.calDay = "";
+    for (const [id, text] of [["inbox", "Nothing read yet."], ["research", "No searches yet."]]) {
+      $(id).classList.remove("multi"); $(id).replaceChildren(el("div", "empty", text));
+    }
+    $("log").classList.remove("multi"); $("log").replaceChildren();
+    $("heard").textContent = ""; setSay("Waiting for you. Ask Chief something.", true, true);
+    renderProposals(); $("inboxCount").textContent = ""; updatePills();
+    loadCalendar();
+  }
+
+  // ---- applying one event ----------------------------------------------------------
+  function apply(e, instant) {
+    if (e.kind === "working" || e.kind === "step") $("now").textContent = String(e.title || "").replace(/\.*$/, "") + "...";
+    const panel = PANEL_OF[e.tool];
+    if (panel && (e.kind === "working" || e.kind === "read" || e.kind === "write")) markPanel(panel, e);
+    logEvent(e);
+    switch (e.kind) {
+      case "heard": return onHeard(e);
+      case "working": return onWorking(e);
+      case "read": case "write": return onResult(e);
+      case "error": return onError(e);
+      case "proposal": return onProposal(e);
+      case "approved": return dropProposal(detailOf(e).id, "approved");
+      case "skipped": return dropProposal(detailOf(e).id, "skipped");
+      case "say": return onSay(e, instant);
+    }
+  }
+
+  function onHeard(e) {
+    $("heard").replaceChildren(el("b", "", "You: "), document.createTextNode(e.title));
+    setSay("", false, false);
+    S.flash.clear();
+    // the previous read-only answer goes; proposals still waiting for approval stay
+    for (const [id, d] of [...S.pending]) if (d.read_only) S.pending.delete(id);
+    renderProposals();
+  }
+
+  // ---- lanes (one per task id; without detail.task there is a single, header-less lane) -------
+  const PANEL_ROOT = { inbox: "inbox", research: "research", log: "log" };
+
+  function hueOf(task) { let h = 0; for (const c of task) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+
+  function laneFor(panel, task) {
+    const map = S.lanes[panel];
+    let lane = map.get(task);
+    if (lane) return lane;
+    const host = $(PANEL_ROOT[panel]);
+    const root = el("div", "lane"); root.dataset.task = task;
+    if (task) root.style.setProperty("--lane", "hsl(" + hueOf(task) + " 75% 68%)");
+    const head = el("div", "lanehead");
+    const tags = el("span", "tags");
+    head.append(el("span", "taskchip", task ? "task " + task : "main"), el("span", "lanework", "working..."), tags);
+    const body = el("div", "lanebody");
+    root.append(head, body);
+    lane = { task, root, body, tags, active: new Set(), tagSet: new Set(), emails: new Map() };
+    map.set(task, lane);
+    const empty = host.querySelector(":scope > .empty"); if (empty) empty.remove();
+    if (panel !== "log" && task) host.prepend(root); else host.append(root);   // newest task on top (the log reads downward)
+    host.classList.toggle("multi", map.size > 1);
+    return lane;
+  }
+
+  function laneWork(lane) { lane.root.classList.toggle("working", lane.active.size > 0); }
+
+  function tagChip(kind) { return el("span", "tag " + kind, kind); }
+  function addTags(set, box, e) {
+    for (const k of ["cached", "simulated"]) {
+      if (flagged(e, k) && !set.has(k)) { set.add(k); box.append(tagChip(k)); }
+    }
+  }
+  function markPanel(panel, e) {
+    addTags(S.panelTags[panel], $("tags-" + panel), e);
+    if (panel === "inbox" || panel === "research") {
+      const lane = S.lanes[panel].get(taskOf(e));
+      if (lane) addTags(lane.tagSet, lane.tags, e);
+    }
+  }
+
+  function onWorking(e) {
+    const panel = PANEL_OF[e.tool];
+    if (!panel || detailOf(e).ref == null) return;
+    const ref = String(e.detail.ref), task = taskOf(e);
+    S.refs.set(ref, { panel, task });
+    S.active[panel].add(ref);
+    updatePills();
+    if (panel === "inbox" || panel === "research") {
+      const lane = laneFor(panel, task);
+      lane.active.add(ref); laneWork(lane);
+      markPanel(panel, e);
+      if (panel === "inbox") placeholder(lane, ref, e.title);
+      else openSearch(lane, ref, detailOf(e).args || {}, e);
+    }
+  }
+
+  function settle(e) {
+    const ref = detailOf(e).ref == null ? "" : String(e.detail.ref);
+    const info = S.refs.get(ref);
+    let task = taskOf(e);
+    if (info) {
+      S.active[info.panel].delete(ref); S.refs.delete(ref); updatePills();
+      task = info.task;                       // the lane the work started in, even if the result lacks the task
+      const lane = S.lanes[info.panel] && S.lanes[info.panel].get(task);
+      if (lane) { lane.active.delete(ref); laneWork(lane); }
+    }
+    return { ref, task };
+  }
+
+  function onResult(e) {
+    const { ref, task } = settle(e);
+    const result = detailOf(e).result;
+    if (e.tool === "fetch_emails" || e.tool === "fetch_thread") {
+      const lane = laneFor("inbox", task);
+      markPanel("inbox", e);
+      dropPlaceholder(lane, ref);
+      addEmails(lane, Array.isArray(result) ? result : [], e);
+    } else if (e.tool === "search_web") {
+      markPanel("research", e);
+      fillSearch(laneFor("research", task), ref, Array.isArray(result) ? result : [], e);
+    } else if (CAL_WRITES.has(e.tool)) onCalendarWrite(e);
+  }
+
+  function onError(e) {
+    const { ref, task } = settle(e);
+    const lane = S.lanes.inbox.get(task); if (lane) dropPlaceholder(lane, ref);
+    const card = document.querySelector('#research [data-ref="' + ref + '"] .status');
+    if (card) { card.textContent = "failed"; card.className = "status bad"; }
+  }
+
+  // ---- step log ---------------------------------------------------------------------
+  function logEvent(e) {
+    const ref = detailOf(e).ref != null ? String(e.detail.ref) : "";
+    let row = ref && (e.kind === "read" || e.kind === "write" || e.kind === "error")
+      ? document.querySelector('#log .row[data-ref="' + ref + '"]') : null;
+    const fresh = !row;
+    if (fresh) row = el("div", "");
+    row.className = "row k-" + e.kind + (fresh ? " reveal" : "");
+    const cell = el("div", "cell");
+    cell.append(el("span", "ttl", e.title || ""));
+    const tags = el("span", "tags"); addTags(new Set(), tags, e);
+    if (tags.children.length) cell.append(tags);
+    row.replaceChildren(el("time", "", String(e.at || "").slice(11, 19)), el("span", "kind", e.kind), cell);
+    if (ref) row.dataset.ref = ref;
+    if (fresh) {
+      const lane = laneFor("log", taskOf(e));
+      lane.body.append(row);
+      while (lane.body.children.length > 120) lane.body.firstChild.remove();
+    }
+    const body = row.parentElement;
+    if (body) body.scrollTop = body.scrollHeight;
+  }
+
+  // ---- inbox ------------------------------------------------------------------------
+  function placeholder(lane, ref, title) {
+    const n = el("div", "skeleton reveal", String(title || "Reading your email").replace(/\.*$/, "") + "...");
+    n.dataset.ref = ref;
+    lane.body.prepend(n);
+  }
+  function dropPlaceholder(lane, ref) {
+    const n = lane.body.querySelector('.skeleton[data-ref="' + ref + '"]');
+    if (n) n.remove();
+  }
+  function inboxCount() {
+    let n = 0; S.lanes.inbox.forEach((l) => { n += l.emails.size; });
+    $("inboxCount").textContent = n ? " " + n : "";
+  }
+
+  function addEmails(lane, list, e) {
+    const fresh = list.filter((m) => m && m.id && !lane.emails.has(m.id));
+    if (!fresh.length && !lane.emails.size && !lane.body.children.length) lane.body.append(el("div", "empty", "No messages."));
+    if (fresh.length) { const empty = lane.body.querySelector(".empty"); if (empty) empty.remove(); }
+    fresh.forEach((m, i) => {
+      const n = el("div", "mail reveal" + (m.unread ? " unread" : ""));
+      n.style.animationDelay = Math.min(i * 120, 480) + "ms";
+      const top = el("div", "top");
+      top.append(el("span", "from", m.sender || ""), el("span", "", m.received ? fmtStamp(m.received) : ""));
+      const tags = el("span", "tags"); addTags(new Set(), tags, e);
+      if (tags.children.length) top.append(tags);
+      n.append(top, el("div", "subj", m.subject || "(no subject)"), el("div", "snip", m.snippet || ""));
+      const rec = m.received || "";
+      // keep newest first, below any "reading..." placeholders
+      const shown = [...lane.emails.values()].sort((a, b) => (a.received < b.received ? 1 : -1));
+      const older = shown.find((x) => x.received < rec);
+      if (older) older.node.before(n);
+      else if (shown.length) shown[shown.length - 1].node.after(n);
+      else lane.body.append(n);
+      lane.emails.set(m.id, { received: rec, node: n });
+    });
+    [...lane.emails.entries()].sort((a, b) => (a[1].received < b[1].received ? 1 : -1)).slice(12)
+      .forEach(([id, x]) => { x.node.remove(); lane.emails.delete(id); });
+    inboxCount();
+  }
+
+  // ---- research ---------------------------------------------------------------------
+  function openSearch(lane, ref, args, e) {
+    const card = el("div", "search reveal");
+    card.dataset.ref = ref;
+    card.append(el("div", "q", args.objective || "Searching the web"));
+    const qs = el("div", "qs");
+    (Array.isArray(args.queries) ? args.queries : []).slice(0, 5).forEach((q) => qs.append(el("span", "", String(q))));
+    const st = el("div", "st"); st.append(el("span", "status", "searching..."));
+    const tags = el("span", "tags"); addTags(new Set(), tags, e || {}); st.append(tags);
+    card.append(qs, st);
+    lane.body.prepend(card);
+    while (lane.body.children.length > 4) lane.body.lastChild.remove();
+    return card;
+  }
+
+  function shortUrl(u) {
+    try { const x = new URL(u); return x.host + (x.pathname === "/" ? "" : x.pathname); } catch (_) { return String(u).slice(0, 80); }
+  }
+
+  function fillSearch(lane, ref, results, e) {
+    let card = lane.body.querySelector('[data-ref="' + ref + '"]');
+    if (!card) card = openSearch(lane, ref, {}, e);
+    const status = card.querySelector(".status");
+    status.textContent = results.length + " source" + (results.length === 1 ? "" : "s");
+    status.className = "status done";
+    const st = card.querySelector(".st .tags"), seen = new Set([...st.children].map((c) => c.textContent));
+    addTags(seen, st, e);
+    results.slice(0, 5).forEach((r, i) => {
+      if (!r || typeof r !== "object") return;
+      const n = el("div", "result reveal");
+      n.style.animationDelay = Math.min(i * 150, 600) + "ms";
+      const excerpt = Array.isArray(r.excerpts) ? r.excerpts[0] : r.excerpt || "";
+      n.append(el("div", "t", r.title || "(untitled)"), el("div", "u", shortUrl(r.url || "")), el("div", "x", excerpt || ""));
+      card.append(n);
+    });
+    $("research").scrollTop = 0;
+  }
+
+  // ---- calendar ---------------------------------------------------------------------
+  // The visible days are stable: the next day with events (and the day before) until a proposal or an
+  // approved change names a day, and then that day, until the screen is reset (R).
+  async function loadCalendar() {
+    if (S.calBusy) { S.calDirty = true; return; }
+    S.calBusy = true; S.calSync = false;
+    try {
+      do {
+        S.calDirty = false;
+        renderCalendar(await api("/stage/calendar" + (S.calDay ? "?day=" + S.calDay : "")));
+      } while (S.calDirty);
+    } catch (_) { /* the next write or the slow refresh tries again */ }
+    S.calBusy = false;
+  }
+
+  async function dayOfEvent(id) {
+    try { const d = await api("/stage/calendar?event=" + encodeURIComponent(id)); return d.pinned ? d.focus : ""; } catch (_) { return ""; }
+  }
+
+  function pinDay(day) {
+    if (!day || day === S.calDay) return;
+    S.calDay = day;
+    loadCalendar();
+  }
+
+  // The oldest proposal still waiting decides the day; a newer one for another day never steals the screen.
+  function focusPendingDay() {
+    const oldest = [...S.pending.values()].find((p) => !p.read_only);
+    if (oldest && oldest.day) pinDay(oldest.day);
+  }
+
+  function snapshotOf(data) {
+    const m = new Map();
+    data.days.forEach((d) => d.events.forEach((ev) => m.set(ev.id, { title: ev.title })));
+    return m;
+  }
+
+  const calSig = (data) => JSON.stringify(data.days.map((d) => [d.date, d.events.map((ev) => [ev.id, ev.title, ev.start, ev.end])]));
+
+  function renderCalendar(data) {
+    const next = snapshotOf(data);
+    const sameDay = S.calData && S.calData.focus === data.focus;   // a change of day is not a change of events
+    if (S.snapshot && sameDay) {
+      for (const [id, v] of next) {
+        const was = S.snapshot.get(id);
+        if (!was && !S.flash.has(id)) S.flash.set(id, { kind: "added", until: Date.now() + FLASH_MS });
+        else if (was && was.title !== v.title) S.flash.set(id, { kind: "renamed", until: Date.now() + FLASH_MS });
+      }
+    }
+    S.snapshot = next;
+    const unchanged = S.calSig === calSig(data);   // already on screen (e.g. shown from the writes): do not replay the fade-in
+    S.calData = data;
+    if (!unchanged) drawCalendar(data);
+    renderProposals();   // a pending action can name an event by id: show its title now that we know it
+  }
+
+  function drawCalendar(data) {
+    S.calSig = calSig(data);
+    const root = $("cal");
+    const all = data.days.flatMap((d) => d.events);
+    const endMin = (ev) => (ev.end.slice(0, 10) === ev.start.slice(0, 10) ? minutesOf(ev.end) : 24 * 60);
+    let lo = 8, hi = 18;
+    all.forEach((ev) => { lo = Math.min(lo, Math.floor(minutesOf(ev.start) / 60)); hi = Math.max(hi, Math.ceil(endMin(ev) / 60)); });
+    const span = (hi - lo) * 60;
+    const frag = document.createDocumentFragment();
+
+    frag.append(el("div", ""));
+    data.days.forEach((d, i) => {
+      const h = el("div", "dayhead" + (i === 0 ? " prev" : ""), d.label);
+      h.append(el("small", "", d.events.length + " event" + (d.events.length === 1 ? "" : "s") + (d.date === data.today ? " - today" : "")));
+      frag.append(h);
+    });
+
+    const axis = el("div", "axis");
+    for (let h = lo; h <= hi; h++) {
+      const s = el("span", "", (h % 12 || 12) + (h >= 12 ? "p" : "a"));
+      s.style.top = ((h - lo) * 60 / span * 100) + "%";
+      axis.append(s);
+    }
+    frag.append(axis);
+
+    data.days.forEach((d, i) => {
+      const col = el("div", "col" + (i === 0 ? " prev" : ""));
+      for (let h = lo; h <= hi; h++) {
+        const l = el("div", "hline"); l.style.top = ((h - lo) * 60 / span * 100) + "%"; col.append(l);
+      }
+      lanes(d.events).forEach(({ ev, lane, lanes: n }) => {
+        const start = minutesOf(ev.start), end = endMin(ev);
+        const b = el("div", "block" + blockClass(ev.title));
+        b.style.top = ((start - lo * 60) / span * 100) + "%";
+        b.style.height = Math.max((end - start) / span * 100, 1.5) + "%";
+        b.style.left = (lane / n * 100) + "%";
+        b.style.width = (100 / n) + "%";
+        const f = S.flash.get(ev.id);
+        if (f && f.until > Date.now()) {
+          b.classList.add(f.kind);
+          b.append(el("span", "badge", f.kind === "added" ? "NEW" : "UPDATED"));
+        }
+        b.append(document.createTextNode(ev.title), el("small", "", fmtTime(ev.start) + " - " + fmtTime(ev.end)));
+        b.title = ev.title + ", " + fmtTime(ev.start) + " - " + fmtTime(ev.end);
+        col.append(b);
+      });
+      frag.append(col);
+    });
+    root.replaceChildren(frag);
+    fitBlocks(root);
+  }
+
+  // Every title stays readable: drop the time line first, then shrink the type, before anything is cut off.
+  function fitBlocks(root) {
+    root.querySelectorAll(".block").forEach((b) => {
+      const over = () => b.scrollHeight > b.clientHeight + 1 || b.scrollWidth > b.clientWidth + 1;
+      if (!over()) return;
+      b.classList.add("compact");
+      let size = parseFloat(getComputedStyle(b).fontSize);
+      while (over() && size > 10) { size -= 1; b.style.fontSize = size + "px"; }
+    });
+  }
+
+  function blockClass(title) {
+    if (/\[async\]/i.test(title)) return " async";
+    if (/^walk:/i.test(title)) return " walk";
+    if (/focus block/i.test(title)) return " focus";
+    return "";
+  }
+
+  function lanes(events) {            // side-by-side lanes for overlapping events
+    const sorted = [...events].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+    const out = []; let cluster = [], clusterEnd = "";
+    const close = () => { const n = Math.max(1, ...cluster.map((x) => x.lane + 1)); cluster.forEach((c) => { c.lanes = n; }); out.push(...cluster); cluster = []; };
+    for (const ev of sorted) {
+      if (cluster.length && ev.start >= clusterEnd) close();
+      const used = new Set(cluster.filter((c) => c.ev.end > ev.start).map((c) => c.lane));
+      let lane = 0; while (used.has(lane)) lane++;
+      cluster.push({ ev, lane, lanes: 1 });
+      if (!clusterEnd || ev.end > clusterEnd) clusterEnd = ev.end;
+    }
+    close();
+    return out;
+  }
+
+  // A write is shown the moment its event is revealed; the real calendar is re-read once the burst is done.
+  function onCalendarWrite(e) {
+    const args = detailOf(e).args || {};
+    const data = S.calData;
+    let applied = false;
+    if (data && e.tool === "patch_event" && args.event_id && args.fields && args.fields.summary) {
+      for (const d of data.days) for (const ev of d.events) {
+        if (ev.id === args.event_id && ev.title !== args.fields.summary) {
+          ev.title = args.fields.summary;
+          S.flash.set(ev.id, { kind: "renamed", until: Date.now() + FLASH_MS });
+          applied = true;
+        }
+      }
+    } else if (data && e.tool === "create_event" && args.start && args.end) {
+      const day = data.days.find((d) => d.date === String(args.start).slice(0, 10));
+      const id = (detailOf(e).result && e.detail.result.id) || "new-" + e.seq;
+      if (day) {
+        day.events.push({ id, title: args.title || "New event", start: args.start, end: args.end, minutes: minutesOf(args.end) - minutesOf(args.start) });
+        S.flash.set(id, { kind: "added", until: Date.now() + FLASH_MS });
+        applied = true;
+      } else { pinDay(String(args.start).slice(0, 10)); return; }   // a change on a day not shown: show that day
+    } else if (data && e.tool === "delete_event" && args.event_id) {
+      for (const d of data.days) d.events = d.events.filter((ev) => ev.id !== args.event_id);
+      applied = true;
+    }
+    if (applied) { S.snapshot = snapshotOf(data); drawCalendar(data); S.calSync = true; }
+    else loadCalendar();
+  }
+
+  // ---- proposals -------------------------------------------------------------------
+  function onProposal(e) { addProposal(detailOf(e).id || "p" + e.seq, detailOf(e), e.title); }
+
+  function addProposal(id, d, summary) {
+    const actions = Array.isArray(d.actions) ? d.actions.map(String) : [];
+    const rec = {
+      id, skill: d.skill || "", summary, actions, sources: Array.isArray(d.sources) ? d.sources : [],
+      task: d.task == null ? "" : String(d.task).slice(0, 14), day: "", read_only: !!d.read_only || !actions.length,
+    };
+    S.pending.set(id, rec);
+    renderProposals();
+    // show the day Chief wants to change, so the audience sees the "before", unless an earlier proposal still holds the screen
+    const first = rec.read_only ? null : actions.map(actionTarget).find(Boolean);
+    if (!first) return;
+    if (first.day) { rec.day = first.day; focusPendingDay(); }
+    else dayOfEvent(first.event).then((day) => { rec.day = day; if (S.pending.has(id)) focusPendingDay(); });
+  }
+
+  function dropProposal(id, how) {
+    const rec = S.pending.get(id);
+    S.pending.delete(id);
+    if (how === "approved" && rec && rec.day && rec.day !== S.calDay) pinDay(rec.day);   // the day the approved change touches
+    if (how === "approved") S.calSync = true;
+    if (how === "skipped") focusPendingDay();                                              // the next waiting proposal's day
+    renderProposals();
+  }
+
+  function actionTarget(s) {
+    let m = /event_id=['"]([^'"]+)['"]/.exec(s);
+    if (m) return { event: m[1] };
+    m = /start=['"](\d{4}-\d{2}-\d{2})/.exec(s);
+    if (m) return { day: m[1] };
+    return null;
+  }
+
+  function titleOf(id) { const v = S.snapshot && S.snapshot.get(id); return v ? v.title : ""; }
+
+  function humanize(s) {
+    const tool = s.split("(")[0];
+    const grab = (re) => { const m = re.exec(s); return m ? m[1] : ""; };
+    if (tool === "patch_event") {
+      const old = titleOf(grab(/event_id=['"]([^'"]+)['"]/));
+      const to = grab(/['"]summary['"]: ['"](.*?)['"][,}]/);
+      if (to) return old ? "Rename \"" + old + "\" to \"" + to + "\"" : "Rename event to \"" + to + "\"";
+      return "Update " + (old ? "\"" + old + "\"" : "an event");
+    }
+    if (tool === "create_event") {
+      const t = grab(/title=['"](.*?)['"], start=/), st = grab(/start=['"]([^'"]+)['"]/), en = grab(/end=['"]([^'"]+)['"]/);
+      return "Add \"" + (t || "event") + "\"" + (st && en ? " - " + fmtDay(st) + ", " + fmtTime(st) + " to " + fmtTime(en) : "");
+    }
+    if (tool === "delete_event") {
+      const old = titleOf(grab(/event_id=['"]([^'"]+)['"]/));
+      return "Delete " + (old ? "\"" + old + "\"" : "an event");
+    }
+    if (tool === "send_email") return "Send an email to " + (grab(/to=['"]([^'"]+)['"]/) || "someone");
+    return s.length > 140 ? s.slice(0, 140) + "..." : s;
+  }
+
+  // One card per proposal waiting for approval (plus an answer card for read-only results that cite sources).
+  function renderProposals() {
+    const box = $("props"), footer = $("footer");
+    const all = [...S.pending.values()];
+    const actionable = all.filter((p) => !p.read_only);
+    const answers = all.filter((p) => p.read_only && p.sources.length).slice(-1);   // without sources it only repeats the caption
+    const list = [...actionable, ...answers];
+    if (!list.length) { box.hidden = true; box.replaceChildren(); footer.classList.remove("has-prop", "many"); return; }
+    footer.classList.add("has-prop");
+    footer.classList.toggle("many", list.length > 1);
+    box.hidden = false;
+    const many = list.length > 1;
+    const maxActions = many ? 3 : 6;
+    const keep = new Set(list.map((p) => p.id));
+    [...box.children].forEach((c) => { if (!keep.has(c.dataset.id)) c.remove(); });
+    list.forEach((p, i) => {
+      const titles = p.actions.map(humanize);
+      const sig = titles.join("|") + "#" + many;
+      let card = [...box.children].find((c) => c.dataset.id === p.id);
+      if (card && card.dataset.sig === sig) return;
+      const fresh = !card;
+      const next = el("div", "prop" + (p.read_only ? " ro" : "") + (fresh ? "" : " seen"));
+      next.dataset.id = p.id; next.dataset.sig = sig;
+      const h = el("h3", "", p.read_only ? "Chief's answer - " + p.skill : (many ? "Approve? " : "Waiting for your approval - ") + p.skill);
+      if (p.task) { const c = el("span", "taskchip", "task " + p.task); c.style.setProperty("--lane", "hsl(" + hueOf(p.task) + " 75% 68%)"); h.append(c); }
+      next.append(h);
+      if (!p.read_only) {
+        const ul = el("ul", "");
+        titles.slice(0, maxActions).forEach((t) => ul.append(el("li", "", t)));
+        next.append(ul);
+        if (titles.length > maxActions) next.append(el("div", "more", "+ " + (titles.length - maxActions) + " more"));
+        next.append(el("div", "hint", many ? "Approve or skip each one on the phone." : 'Say "do it" or tap Approve on the phone. "Skip" to leave it.'));
+      }
+      if (p.sources.length) next.append(el("div", "src", "Sources: " + p.sources.join(", ")));
+      if (card) card.replaceWith(next); else box.append(next);
+      if (!fresh) next.style.animation = "none";
+    });
+    // keep the cards in age order (moving a node replays its fade-in, so only when the order is wrong)
+    const want = list.map((p) => p.id).join(), have = [...box.children].map((c) => c.dataset.id).join();
+    if (want !== have) list.forEach((p) => { const c = [...box.children].find((x) => x.dataset.id === p.id); if (c) c.style.animation = "none", box.append(c); });
+  }
+
+  // ---- caption ----------------------------------------------------------------------
+  function setSay(text, idle, instant) {
+    const n = $("say");
+    clearInterval(S.typer);
+    const size = text.length > 320 ? "xl" : text.length > 170 ? "l" : text.length > 90 ? "m" : "";
+    n.className = (idle ? "idle " : "") + size;
+    if (instant || !text) { n.textContent = text; return; }
+    const total = Math.min(800, text.length * 16), tick = 30;
+    const stepChars = Math.max(1, Math.ceil(text.length / (total / tick)));
+    let i = 0;
+    S.typer = setInterval(() => {
+      i = Math.min(text.length, i + stepChars);
+      n.textContent = text.slice(0, i);
+      if (i >= text.length) clearInterval(S.typer);
+    }, tick);
+  }
+  function onSay(e, instant) { setSay(String(e.title || ""), false, instant); }
+
+  function updatePills() {
+    for (const k of Object.keys(S.active)) $("pill-" + k).classList.toggle("on", S.active[k].size > 0);
+  }
+
+  // press R to wipe the screen between demos
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "r" || ev.key === "R") { resetScreen(); S.first = false; api("/stage/events?since=999999999").then((d) => { S.cursor = d.last_seq; }); }
+  });
+
+  // the text fit depends on the size of the day columns: redo it when the window (or projector) changes size
+  if (window.ResizeObserver) {
+    let t = 0, last = "";
+    new ResizeObserver(() => {
+      const size = $("cal").clientWidth + "x" + $("cal").clientHeight;
+      if (size === last) return;
+      last = size;
+      clearTimeout(t);
+      t = setTimeout(() => { if (S.calData) drawCalendar(S.calData); }, 150);
+    }).observe($("cal"));
+  }
+
+  loadCalendar();
+  setInterval(() => { if (!S.draining) loadCalendar(); }, 20000);
+  poll();
+})();
+</script>
+</body>
+</html>
