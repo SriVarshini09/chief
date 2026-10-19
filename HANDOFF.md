@@ -30,7 +30,8 @@ The owner's priorities: a demo that works live, honesty about what is real vs mo
   the Cline API as the model host, the Cloudflare tunnel, a real phone (Samsung/Chrome), the real-window layer with a real Google
   login, and `seed_demo_account.py --apply` (dry run only).
 - Tool calling on any open model. The scripted demo does not need a model; only the open-ended `general` skill and optional phrasing do.
-- Nothing has been committed to git before the commit that contains this file.
+- Git: the first commit (`59730c1`, 2026-10-19) is the first time any of this was under version control; everything before it was built in a
+  plain folder.
 
 ## 3. Run it (no accounts needed)
 
@@ -127,8 +128,12 @@ unverified with a real browser.
 - Several people (or agents) may edit at once: re-read a file right before editing it and keep edits small.
 - The mock tools are deterministic relative to `now` (heavy meetings Mon/Tue/Thu); tests pin `NOW = 2026-10-21 08:00` (a Wednesday).
 - Test fixtures contain deliberately fake key-like strings (`tests/test_doctor.py`, `tests/test_replay.py`) that verify redaction. They are not real.
-- The git history is a single commit by design. The machine this was built on is logged into GitHub as a different account
-  than the repo owner (`premxai`); check `gh auth status` before pushing and never force-push.
+- **Where the code lives:** `https://github.com/SriVarshini09/chief` (public, remote `origin`). The first commit was authored as
+  `premxai` (GitHub no-reply address) because the owner of the project is `premxai`, who plans to fork this repo. A second remote named
+  `premxai` points at `https://github.com/premxai/chief.git` (empty when last checked); this machine's GitHub login is
+  `SriVarshini09`, which can push to `origin` but only read `premxai/chief`.
+- Git: use the repo-local identity (`git config user.name`, `user.email`), not the global one. Run `gh auth status` before pushing, and never
+  force-push. Do not push to `premxai` unless the owner has signed in to `gh` as that account.
 
 ## 9. If you only have 20 minutes
 
