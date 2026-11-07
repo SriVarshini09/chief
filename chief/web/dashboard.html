@@ -383,6 +383,8 @@
       <span class="tag" id="mode">connecting</span>
       <a id="phone" href="/">Talk</a>
       <a id="stage" href="/stage">Stage</a>
+      <a id="setup" href="/setup">Setup</a>
+      <button type="button" class="tag tourbtn" id="signOut">Sign out</button>
     </div>
   </header>
 
@@ -492,6 +494,20 @@
 <div class="pointer" id="pointer" hidden aria-hidden="true"><svg viewBox="0 0 40 48"><path d="M20 46L4 24h10V2h12v22h10z"/></svg></div>
 
 <script>
+// Signed in with a password, so the address has no token: fetch it once through the cookie (Chief's own
+// pages only, see chief/web/front_door.py) and keep it for this tab, like a token link would.
+(() => {
+  try {
+    if (new URLSearchParams(location.search).get("token") || sessionStorage.getItem("chief-token")) return;
+    const x = new XMLHttpRequest();
+    x.open("GET", "/session", false);  // synchronous on purpose: the script below reads the token as it starts
+    x.setRequestHeader("X-Chief-Session", "1");
+    x.send();
+    if (x.status === 200) sessionStorage.setItem("chief-token", JSON.parse(x.responseText).token || "");
+  } catch (_) {}
+})();
+</script>
+<script>
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
@@ -516,6 +532,12 @@
 
   $("phone").href = "/" + QUERY;
   $("stage").href = "/stage" + QUERY;
+  $("setup").href = "/setup" + QUERY;
+  $("signOut").addEventListener("click", async () => {  // forget the token in this tab, clear the cookie, back to the welcome page
+    try { sessionStorage.removeItem("chief-token"); } catch (_) {}
+    try { await fetch("/signout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); } catch (_) {}
+    location.assign("/welcome");
+  });
 
   async function api(path, opts = {}) {
     const res = await fetch(path, { ...opts, headers: { "X-Chief-Token": TOKEN, ...(opts.headers || {}) } });

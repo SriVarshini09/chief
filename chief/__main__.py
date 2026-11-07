@@ -34,6 +34,7 @@ def _serve_web(rt: Runtime, host: str, port: int) -> int:
               "and the token travels unencrypted. Use a tunnel with https, or keep the default 127.0.0.1.", flush=True)
     print(f"Chief voice page ({rt.cfg.mode} mode): http://localhost:{port}/?token={token}", flush=True)
     print(f"Garden dashboard: http://localhost:{port}/dashboard?token={token}", flush=True)
+    print(f"Welcome, sign in and connect your accounts: http://localhost:{port}/welcome", flush=True)
     if not os.getenv("CHIEF_WEB_TOKEN"):
         print("(CHIEF_WEB_TOKEN is not set, so that token is random for this run.)", flush=True)
     from chief.telegram_app import start_with_web

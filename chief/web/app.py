@@ -396,6 +396,10 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
         pins the view to a particular day, e.g. the one Chief is about to change."""
         return stage_days(rt, day=day, event=event)
 
+    # ---- the front door: /welcome, /signin, /session, /setup (chief/web/front_door.py) ---------------
+    from chief.web.front_door import install_front_door
+
+    install_front_door(app, rt, token, require_token)
     return app
 
 
