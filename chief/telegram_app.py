@@ -254,6 +254,7 @@ def start_with_web(rt: Runtime) -> bool:
     rt.gate.notify = both
     try:
         api.call("deleteWebhook", drop_pending_updates=True)
+        bot.send(f"Chief is on ({rt.cfg.mode} mode).")
     except Exception as exc:
         print(f"Telegram is off: {type(exc).__name__}. Check TELEGRAM_BOT_TOKEN.")
         rt.gate.notify = earlier

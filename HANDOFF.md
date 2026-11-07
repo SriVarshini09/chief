@@ -24,8 +24,8 @@ The owner's priorities: a demo that works live, honesty about what is real vs mo
 - A manual safety scan found no `shell=True`, `eval`/`exec`, `innerHTML`, or secret printing; subprocess calls take argument lists only.
 
 **NOT verified. Never run against anything real (no keys existed):**
-- Composio writes other than `create_event` and `delete_event`: `patch_event`, `create_draft` and `send_email` have never run for real.
-  Gmail reads and calendar reads, creates and undo were verified on a real account on 2026-11-07 (see the README status table).
+- Composio writes `patch_event`, `create_draft` and replies inside a thread (`GMAIL_REPLY_TO_THREAD`) have never run for real.
+  Gmail reads, calendar reads, creates and undo, and sending a new email were verified on a real account on 2026-11-07 (see the README status table).
   The Composio key needs write access for `session_management`, or every call fails with a 403.
 - Parallel web search, Slack Socket Mode (`slack-bolt` is not even installed in the venv), Whisper speech-to-text (Groq),
   the Cline API as the model host, the Cloudflare tunnel, a real phone (Samsung/Chrome), the real-window layer with a real Google

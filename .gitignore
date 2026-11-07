@@ -7,3 +7,5 @@ __pycache__/
 *.egg-info/
 data/private/
 data/demo_cache.json*
+# your own dashboard picture: it stays on this computer
+chief/web/footage/background.jpg

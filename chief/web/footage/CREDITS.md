@@ -1,7 +1,15 @@
 # Footage credits
 
-Both clips come from Wikimedia Commons. For Chief they were trimmed, their sound was removed, the end was blended into the start
-so they loop, and they were re-encoded to H.264. Each `.jpg` is one frame from its video.
+All of this comes from Wikimedia Commons. The two videos were trimmed, their sound was removed, the end was blended into the start so
+they loop, and they were re-encoded to H.264. `daisies.jpg` and `sunset-clouds.jpg` are single frames from those videos.
+
+## orchard.jpg
+
+- Title: Pretty Blossoms All in a Row
+- Author: Savannah River Site
+- Source: https://commons.wikimedia.org/wiki/File:Pretty_Blossoms_All_in_a_Row_(50326184663).jpg
+- License: Creative Commons Attribution 2.0 (CC BY 2.0), https://creativecommons.org/licenses/by/2.0/
+- Changes made for Chief: resized, the pink blossoms recoloured white, and the light softened. The credit appears on the dashboard.
 
 ## daisies.mp4 and daisies.jpg
 

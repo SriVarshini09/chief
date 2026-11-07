@@ -3,7 +3,7 @@
 Run Chief as a Telegram bot to get notifications, Approve and Skip buttons, and a morning brief on your phone. It needs no tunnel and
 no public URL, but Chief has to keep running on a computer that stays on.
 
-**Status: tested against a fake Telegram API only. It has never connected to real Telegram.** Update this line after the first real run.
+**Status: connected to real Telegram on 2026-11-07.** Finding your ID and receiving Chief's messages work. Approve, Skip and Undo buttons have only been tested against a fake Telegram API. Update this line after they run for real.
 
 ## Set it up
 

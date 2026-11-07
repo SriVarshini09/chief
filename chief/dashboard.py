@@ -45,7 +45,7 @@ def week(rt: Runtime, now: datetime) -> list[dict]:
     for offset in range(7):
         day = (start + timedelta(days=offset)).date()
         count = sum(1 for e in events if e.start.date() == day)
-        days.append({"day": f"{day:%a}", "meetings": count, "heavy": count >= HEAVY_MEETINGS})
+        days.append({"day": f"{day:%a}", "full": f"{day:%A}", "meetings": count, "heavy": count >= HEAVY_MEETINGS})
     return days
 
 
@@ -77,6 +77,43 @@ def rest(rt: Runtime) -> dict:
     }
 
 
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}" if count == 1 else f"{count} {word}s"
+
+
+def _names(items: list[dict]) -> str:
+    names = list(dict.fromkeys(i["from"] for i in items))
+    shown = names[:2] + ([f"{len(names) - 2} more"] if len(names) > 2 else [])
+    return " and ".join(shown) if len(shown) < 3 else f"{shown[0]}, {shown[1]} and {shown[2]}"
+
+
+def opening(hour: float, meetings: list[dict], mail: dict, days: list[dict], missing: list[str]) -> str:
+    """The first thing Chief says: built in plain code from what it read, with no model involved."""
+    hello = "Good morning" if hour < 12 else "Good afternoon" if hour < 17 else "Good evening"
+    lines = [f"Hi! {hello}."]
+    if "calendar" in missing:
+        lines.append("I can't reach your calendar right now.")
+    elif meetings:
+        first = meetings[0]
+        lines.append(f"You've got {_plural(len(meetings), 'meeting')} today, starting with {first['title']} at {first['clock']}.")
+    else:
+        lines.append("Your calendar's clear today.")
+    if "mail" in missing:
+        lines.append("I can't reach your email right now.")
+    elif mail["reply"]:
+        lines.append(f"{_names(mail['reply'])} {'is' if len(mail['reply']) == 1 else 'are'} waiting to hear from you.")
+    else:
+        lines.append("And nothing in your inbox needs you.")
+    if mail["flagged"]:
+        lines.append(f"I ignored {_plural(mail['flagged'], 'email')} that tried to give me orders.")
+    heavy = next((d for d in days[1:] if d["heavy"]), None)
+    if heavy and len(lines) < 4:
+        lines.append(f"{heavy['full']} looks heavy, so I'm keeping an eye on it.")
+    if len(lines) < 4:
+        lines.append("I'll be right here if you need me.")
+    return " ".join(lines)
+
+
 def _part(name: str, read: Callable[[], Any], fallback: Any, missing: list[str]) -> Any:
     try:
         return read()
@@ -88,13 +125,18 @@ def _part(name: str, read: Callable[[], Any], fallback: Any, missing: list[str])
 def snapshot(rt: Runtime) -> dict:
     now = rt.now()
     missing: list[str] = []
+    meetings = _part("calendar", lambda: today(rt, now), [], missing)
+    days = _part("week", lambda: week(rt, now), [], missing)
+    mail = _part("mail", lambda: inbox(rt, now), {"reply": [], "deadline": [], "fyi": 0, "flagged": 0}, missing)
+    hour = now.hour + now.minute / 60
     return {
-        "hour": now.hour + now.minute / 60,
+        "hour": hour,
         "date": f"{now:%A}, {now:%B} {now.day}",
         "mode": rt.cfg.mode,
-        "today": _part("calendar", lambda: today(rt, now), [], missing),
-        "week": _part("week", lambda: week(rt, now), [], missing),
-        "inbox": _part("mail", lambda: inbox(rt, now), {"reply": [], "deadline": [], "fyi": 0, "flagged": 0}, missing),
+        "say": opening(hour, meetings, mail, days, missing),
+        "today": meetings,
+        "week": days,
+        "inbox": mail,
         "rest": _part("sleep", lambda: rest(rt), None, missing),
         "missing": missing,
     }

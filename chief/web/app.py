@@ -30,10 +30,13 @@ PAGE = Path(__file__).parent / "index.html"
 STAGE_PAGE = Path(__file__).parent / "stage.html"
 DASHBOARD_PAGE = Path(__file__).parent / "dashboard.html"
 WORLD_SCRIPT = Path(__file__).parent / "world.js"
+PET_SCRIPT = Path(__file__).parent / "pet.js"
 FOOTAGE = Path(__file__).parent / "footage"
+OWN_PICTURE = "background.jpg"
 FOOTAGE_FILES = {
     "daisies.mp4": "video/mp4",
     "daisies.jpg": "image/jpeg",
+    "orchard.jpg": "image/jpeg",
     "sunset-clouds.mp4": "video/mp4",
     "sunset-clouds.jpg": "image/jpeg",
 }
@@ -260,9 +263,15 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
     def dashboard_world() -> FileResponse:
         return FileResponse(WORLD_SCRIPT, media_type="text/javascript", headers={"Cache-Control": "no-store"})
 
+    @app.get("/dashboard/pet.js", dependencies=auth)
+    def dashboard_pet() -> FileResponse:
+        return FileResponse(PET_SCRIPT, media_type="text/javascript", headers={"Cache-Control": "no-store"})
+
     @app.get("/dashboard/footage/{name}", dependencies=auth)
     def dashboard_footage(name: str) -> FileResponse:
         """FileResponse answers Range requests, which iPhones need before they will play a video."""
+        if name == OWN_PICTURE and (FOOTAGE / name).is_file():  # optional, and never in the repo
+            return FileResponse(FOOTAGE / name, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
         if name not in FOOTAGE_FILES:
             raise HTTPException(404, "no such footage")
         return FileResponse(FOOTAGE / name, media_type=FOOTAGE_FILES[name], headers={"Cache-Control": "private, max-age=86400"})

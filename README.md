@@ -22,8 +22,8 @@ python -m venv .venv
 .venv/Scripts/python -m chief web                        # open the Garden dashboard link it prints
 ```
 
-> **What's real today:** everything above works on sample data, and that is what the quickstart shows. Reading real Gmail and creating and undoing real Calendar events work; real email sending and drafts are
-> not verified yet, and neither is real Telegram. [Status and verification](#status-and-verification) lists each
+> **What's real today:** everything above works on sample data, and that is what the quickstart shows. Reading real Gmail, sending email and creating and undoing Calendar events work on a real account; drafts and replies in a thread are
+> not verified yet, and real Telegram is connected but its buttons are untested. [Status and verification](#status-and-verification) lists each
 > part. Picking the project up? Start with **[HANDOFF.md](HANDOFF.md)**.
 
 ![Chief architecture](docs/chief-architecture-preview.png)
@@ -218,11 +218,11 @@ Facts as of the last check of this repository, with how each was established. "M
 | Safety rules (no write without approval, undeclared tools rejected, skip is remembered) | **Verified by tests** in mock mode. Not checked against a real account. |
 | Phone voice page and Stage (FastAPI) | Routes and token check **tested with FastAPI's test client**. **Not yet used from a real phone** through a tunnel; microphone permission, recording format and spoken replies on Android are unverified. |
 | Whisper speech-to-text | Request code **tested with a fake transcriber**. **Never called a real Whisper endpoint.** |
-| Composio Calendar and Gmail (`LiveTools`) | **Verified on a real account (2026-11-07):** reading Gmail and threads, inbox sorting, the morning brief, the dashboard, and creating, reading back and undoing a calendar event through the approval gate, with times correct. **Not run for real yet:** editing an existing event, saving a draft, and sending email. Inbox sorting has only seen newsletters and notifications, not personal mail. |
+| Composio Calendar and Gmail (`LiveTools`) | **Verified on a real account (2026-11-07):** reading Gmail and threads, inbox sorting, the morning brief, the dashboard, creating, reading back and undoing a calendar event through the approval gate with times correct, and sending a new email to the account's own address, including stopping one in the 30-second hold. **Not run for real yet:** editing an existing event, saving a draft, and replying inside a thread. Inbox sorting has only seen newsletters and notifications, not personal mail. |
 | Parallel search | Same: checked against source and docs, tested with fakes, **never run with a key**. |
 | Slack approval cards | Card layout and click handlers **unit-tested without Slack**. **Socket Mode has never connected to a real workspace.** |
-| Telegram bot and morning brief | Owner check, approvals, scheduling and long messages **tested with a fake Telegram API** (`tests/test_telegram.py`). **Never connected to real Telegram.** See [docs/telegram-setup.md](docs/telegram-setup.md). |
-| Garden dashboard | Routes, data and failure handling **tested** (`tests/test_dashboard.py`). By day and at sunset it plays real footage (`chief/web/footage/`). At night, or if video cannot play, it uses the 3D scene (`chief/web/world.js`, WebGL2), and without WebGL2 a drawn 2D garden. Checked in a browser. **Video playback and the 3D scene's smoothness have not been checked on a real phone.** |
+| Telegram bot and morning brief | Connected to real Telegram: finding your ID and receiving messages work. Owner check, approvals, scheduling and long messages are **tested with a fake Telegram API** (`tests/test_telegram.py`), and **real button taps have not been tried yet.** See [docs/telegram-setup.md](docs/telegram-setup.md). |
+| Garden dashboard | Routes, data and failure handling **tested** (`tests/test_dashboard.py`). By day it shows a real orchard photo with animated petals and mist, and at sunset real video (`chief/web/footage/`). At night, or if video cannot play, it uses the 3D scene (`chief/web/world.js`, WebGL2), and without WebGL2 a drawn 2D garden. Checked in a browser. **Video playback and the 3D scene's smoothness have not been checked on a real phone.** |
 | Installing the phone page | Manifest and icons **tested**, and they loaded in a browser at phone size. **Not yet added to the home screen of a real phone.** |
 | Open-source model | **No model has been called.** No model has been benchmarked for tool calling. Mock mode runs with the model disabled. |
 | Real browser windows (`chief/screen.py`) | URL mapping, limits and the DevTools client tested; the DevTools client was exercised against a headless Chrome with a throwaway profile. **No real Google sign-in, and no real Gmail or Calendar page, has been driven.** Multi-monitor placement unverified. |
@@ -259,6 +259,6 @@ from what you observe, not what the code intends.
 
 ## License
 
-MIT. See [LICENSE](LICENSE). The dashboard's background videos are public-domain footage with their own credits: see
+MIT. See [LICENSE](LICENSE). The dashboard's background photo and videos have their own licenses and credits: see
 [chief/web/footage/CREDITS.md](chief/web/footage/CREDITS.md). Calendar, mail and sleep data in mock mode are generated samples; the people and companies in them
 are invented.
