@@ -159,6 +159,13 @@ def test_the_kitten_looks_away_from_secrets_and_never_repeats_them():
     assert 'e.target.type === "password"' in page
 
 
+def test_you_can_pick_the_scene_and_it_is_remembered():
+    page = DASHBOARD_PAGE.read_text("utf-8")
+    for scene in ("auto", "picture", "meadow", "daisies", "sunset", "orchard"):
+        assert f'data-scene="{scene}"' in page
+    assert "chief-scene" in page and 'id="scenePicture"' in page
+
+
 def test_icons_are_drawn_in_the_page():
     page = DASHBOARD_PAGE.read_text("utf-8")
     for name in ("mic", "speaker", "mute", "undo", "calendar", "mail", "check", "compass"):
