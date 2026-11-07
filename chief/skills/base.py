@@ -21,6 +21,7 @@ from typing import Callable
 from chief.llm import LLM
 from chief.memory import Memory
 from chief.models import Proposal
+from chief.places import Whereabouts
 from chief.tools import ScopedTools
 
 
@@ -32,6 +33,7 @@ class Context:
     now: datetime
     request: str = ""  # what the user said, when the skill was asked for (empty on a heartbeat)
     history: list[dict] = field(default_factory=list)  # recent turns [{"user", "chief"}], oldest first; context only
+    where: Whereabouts = field(default_factory=Whereabouts)  # where you are, if you shared it; memory only
 
 
 @dataclass

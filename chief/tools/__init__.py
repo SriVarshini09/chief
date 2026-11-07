@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from chief.config import Config
-from chief.tools.base import ALL_TOOLS, READ_TOOLS, SAFE_WRITE_TOOLS, WRITE_TOOLS, ScopedTools, Tools
+from chief.tools.base import ALL_TOOLS, PLACE_TOOLS, READ_TOOLS, SAFE_WRITE_TOOLS, WRITE_TOOLS, ScopedTools, Tools
 
-__all__ = ["ALL_TOOLS", "READ_TOOLS", "SAFE_WRITE_TOOLS", "WRITE_TOOLS", "ScopedTools", "Tools", "get_tools"]
+__all__ = ["ALL_TOOLS", "PLACE_TOOLS", "READ_TOOLS", "SAFE_WRITE_TOOLS", "WRITE_TOOLS", "ScopedTools", "Tools", "get_tools"]
 
 
 def get_tools(cfg: Config) -> Tools:

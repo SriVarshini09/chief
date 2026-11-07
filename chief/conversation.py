@@ -42,6 +42,7 @@ class Task:
     request: str
     say: str = ""
     proposal_id: str | None = None
+    failed: bool = False  # the skill raised; `say` explains it in plain words
 
     def to_json(self) -> dict:
         return {"id": self.id, "skill": self.skill, "say": self.say, "proposal_id": self.proposal_id}
@@ -68,6 +69,8 @@ class Conversation:
         self.last_tasks: list[Task] = []
         self.last_result: Proposal | None = None
         self.last_proposal_ids: list[str] = []  # proposals of the latest answer, in the order they were spoken
+        self.offered: str | None = None  # the card the latest answer asked about: the only one a plain 'yes' approves
+        self.undo_offered = False  # the latest answer said 'say undo': then 'undo' reverses, it doesn't skip
         self._origin: dict[str, str] = {}  # proposal id -> task id that made it (so an approval lands in its lane)
         self._count = 0
         self._lock = threading.Lock()

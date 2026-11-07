@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from chief.models import Email, Event, SleepDay
-from chief.tools.base import ALL_TOOLS, READ_TOOLS, Tools
+from chief.tools.base import ALL_TOOLS, PLACE_TOOLS, READ_TOOLS, Tools
 
 CACHE_VERSION = 1
 DEFAULT_TIMEOUT = 6.0
@@ -52,6 +52,8 @@ _MAX_RESULTS = 50
 # Local-machine tools (chief/tools/local.py): they never touch the network, so there is nothing to cache, time out
 # or fail over. They always go straight to the underlying tools, unflagged, and never feed the breaker.
 LOCAL_TOOLS = {"list_folder", "open_folder", "open_file"}
+# Map lookups go straight through too: they are never cached, so a recording never holds where you were.
+PASS_THROUGH = LOCAL_TOOLS | PLACE_TOOLS
 
 
 class CacheMiss(LookupError):
@@ -410,7 +412,7 @@ def _recorder_write(name: str, always: bool = False):
 
 
 for _n in ALL_TOOLS:
-    if _n == "list_folder":
+    if _n == "list_folder" or _n in PLACE_TOOLS:
         setattr(RecorderTools, _n, _recorder_write(_n, always=True))  # straight through, never cached
     else:
         setattr(RecorderTools, _n, _recorder_read(_n) if _n in READ_TOOLS else _recorder_write(_n))
@@ -499,7 +501,7 @@ def _replay_write(name: str):
 
 
 for _n in ALL_TOOLS:
-    if _n == "list_folder":
+    if _n == "list_folder" or _n in PLACE_TOOLS:
         setattr(ReplayTools, _n, _replay_local(_n))
     else:
         setattr(ReplayTools, _n, _replay_read(_n) if _n in READ_TOOLS else _replay_write(_n))
@@ -606,7 +608,7 @@ def _failover_write(name: str):
 
 
 for _n in ALL_TOOLS:
-    if _n in LOCAL_TOOLS:
+    if _n in PASS_THROUGH:
         setattr(FailoverTools, _n, _failover_local(_n))
     else:
         setattr(FailoverTools, _n, _failover_read(_n) if _n in READ_TOOLS else _failover_write(_n))

@@ -264,6 +264,33 @@
   button:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
   .calm { margin: 10px 0 0; font: italic 400 18px/1.4 var(--serif); color: var(--soft); }
 
+  /* places around you */
+  .places { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+  .places li { padding: 8px 10px; border-radius: 12px; transition: background .3s; }
+  .places li:hover { background: color-mix(in srgb, var(--moss) 10%, transparent); }
+  .places b { display: block; font: 600 16px/1.3 var(--sans); }
+  .places .note { display: block; margin: 2px 0 0; font-size: 13px; color: var(--soft); }
+  .links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .links:empty { display: none; }
+  .links a {
+    display: inline-flex; align-items: center; min-height: 34px; padding: 4px 14px; border-radius: 99px; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--edge); color: var(--ink); text-decoration: none; transition: transform .18s, background .18s;
+  }
+  .links a:hover { transform: translateY(-2px); }
+  .links a.main { background: var(--moss); border-color: var(--moss); color: #fff; }
+  #aroundNote:empty { display: none; }
+  .ask .round#locBtn.on { background: var(--moss); color: #fff; border-color: var(--moss); }
+  .consent {
+    display: grid; grid-template-columns: auto 1fr; gap: 10px 12px; align-items: start; margin-bottom: 10px; padding: 14px 16px;
+    background: var(--paper-solid); color: var(--ink); border: 1px solid var(--edge); border-radius: 20px; box-shadow: 0 18px 40px -16px rgba(10, 24, 16, .55);
+    animation: rise .5s cubic-bezier(.2, .7, .2, 1) both;
+  }
+  .consent[hidden] { display: none; }
+  .consent > .ico { width: 24px; height: 24px; color: var(--moss); margin-top: 2px; }
+  .consent p { margin: 0; font-size: 15px; line-height: 1.45; }
+  .consent b { display: block; font: 600 18px/1.3 var(--serif); margin-bottom: 2px; }
+  .consent .row { grid-column: 2; }
+
   /* inbox */
   .mail { list-style: none; margin: 8px 0 0; padding: 0; }
   .mail li { display: flex; gap: 10px; padding: 6px 0; align-items: flex-start; }
@@ -330,6 +357,7 @@
   <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16.5 9.5"/></symbol>
   <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 7l8 6 8-6"/></symbol>
   <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/></symbol>
   <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/></symbol>
 </svg>
@@ -423,6 +451,12 @@
       </div>
     </div>
     <div class="col right">
+      <section class="panel" id="aroundPanel" hidden>
+        <h2><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg><span id="aroundTitle">Around you</span></h2>
+        <ul class="places" id="places"></ul>
+        <div class="links" id="aroundLinks"></div>
+        <p class="note" id="aroundNote"></p>
+      </section>
       <section class="panel" id="waiting">
         <h2><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Waiting for you</h2>
         <div id="pending"></div>
@@ -439,11 +473,17 @@
 </main>
 
 <div class="ask">
+  <div class="consent" id="consent" role="dialog" aria-labelledby="consentText" hidden>
+    <svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg>
+    <p id="consentText"><b>Can I use your live location?</b> I'll use it to find places and directions near you, keep it only while Chief is running, and you can switch it off with the pin.</p>
+    <div class="row"><button type="button" class="do" id="consentYes">Allow</button><button type="button" class="no" id="consentNo">Not now</button></div>
+  </div>
   <button id="undo" type="button" hidden></button>
   <form id="askForm">
     <button type="button" class="round" id="mic" title="Talk to Chief" aria-label="Talk to Chief" hidden><svg class="ico" aria-hidden="true"><use href="#i-mic"/></svg></button>
     <input id="text" type="text" autocomplete="off" enterkeyhint="send" aria-label="Ask Chief" placeholder="Ask Chief: morning brief">
     <button type="submit" aria-label="Ask"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg> Ask</button>
+    <button type="button" class="round" id="locBtn" title="Share your location with Chief" aria-label="Share your location" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg></button>
     <button type="button" class="round" id="voice" title="Turn Chief's voice on or off" aria-label="Chief's voice" aria-pressed="true"></button>
   </form>
 </div>
@@ -456,7 +496,16 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
   const params = new URLSearchParams(location.search);
-  const TOKEN = params.get("token") || "";
+  const TOKEN = (() => {  // the token is kept for this tab only, then taken out of the address bar (history, screen shares)
+    const p = new URLSearchParams(location.search), t = p.get("token");
+    if (t) {
+      try { sessionStorage.setItem("chief-token", t); } catch (_) {}
+      p.delete("token");
+      history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : "") + location.hash);
+      return t;
+    }
+    try { return sessionStorage.getItem("chief-token") || ""; } catch (_) { return ""; }
+  })();
   const QUERY = "?token=" + encodeURIComponent(TOKEN);
   const CALM = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const TAU = Math.PI * 2;
@@ -1748,6 +1797,7 @@
     try {
       const s = await api("/status");
       if (asking) working(s.steps.length ? s.steps[s.steps.length - 1] : "Thinking");
+      if (haveLocation !== !!s.location) { haveLocation = !!s.location; showLocation(); }
       undoMark = s.undo ? s.undo.mark : "";
       $("undo").hidden = !s.undo;
       if (s.undo) $("undo").replaceChildren(icon("undo"), " " + s.undo.label + (s.undo.seconds != null ? " (" + s.undo.seconds + "s)" : ""));
@@ -1766,11 +1816,112 @@
     } catch (_) { $("mode").textContent = "offline"; }
   }
 
-  $("askForm").addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const box = $("text"), text = box.value.trim();
-    if (!text) return;
-    box.value = "";
+  // ---- where you are: asked for only when you tap the pin or a question needs it. Kept in memory on the server.
+  // Chief asks in words first ("Can I use your live location?"); only after Allow does the browser ask.
+  // Once allowed, the location follows you (sent when you move about 100 m, or every 2 minutes) until you switch it off.
+  let haveLocation = false, watchId = null, lastSent = null;
+  const CONSENT = "chief-location-ok";
+
+  function askConsent() {
+    return new Promise((resolve) => {
+      const box = $("consent");
+      box.hidden = false;
+      $("consentYes").focus();
+      const done = (ok) => { box.hidden = true; $("consentYes").onclick = $("consentNo").onclick = null; resolve(ok); };
+      $("consentYes").onclick = () => done(true);
+      $("consentNo").onclick = () => done(false);
+    });
+  }
+
+  async function sendPosition(pos, force) {
+    const p = { lat: pos.coords.latitude, lon: pos.coords.longitude, at: Date.now() };
+    if (!force && lastSent) {
+      const moved = Math.hypot((p.lat - lastSent.lat) * 111000, (p.lon - lastSent.lon) * 111000 * Math.cos(p.lat * Math.PI / 180));
+      if (moved < 100 && p.at - lastSent.at < 120000) return;
+    }
+    await api("/location", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lat: p.lat, lon: p.lon }) });
+    lastSent = p;
+    haveLocation = true; showLocation();
+  }
+
+  function shareLocation() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) return reject(new Error("This browser can't share a location. Tell me instead: I'm at …"));
+      if (!window.isSecureContext) return reject(new Error("Location needs a secure page. Tell me instead: I'm at …"));
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        try { await sendPosition(pos, true); } catch (e) { return reject(e); }
+        try { localStorage.setItem(CONSENT, "1"); } catch (_) {}
+        followLocation();
+        resolve();
+      }, () => reject(new Error("You didn't share your location. You can tell me instead: I'm at …")), { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+    });
+  }
+
+  function followLocation() {
+    if (watchId !== null || !navigator.geolocation) return;
+    watchId = navigator.geolocation.watchPosition((pos) => { sendPosition(pos, false).catch(() => {}); }, () => {}, { enableHighAccuracy: true, maximumAge: 30000 });
+  }
+
+  async function stopLocation() {
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    watchId = null; lastSent = null;
+    try { localStorage.removeItem(CONSENT); } catch (_) {}
+    await api("/location", { method: "DELETE" });
+    haveLocation = false; showLocation();
+  }
+
+  function showLocation() {
+    $("locBtn").classList.toggle("on", haveLocation);
+    $("locBtn").setAttribute("aria-pressed", String(haveLocation));
+    $("locBtn").title = haveLocation ? "Chief is using your live location. Click to stop." : "Share your location with Chief";
+  }
+  $("locBtn").addEventListener("click", async () => {
+    try {
+      if (haveLocation || watchId !== null) { await stopLocation(); say("Okay, I've stopped using your location and forgotten it."); }
+      else { await shareLocation(); say("Thanks! I'll use your live location until you switch it off. Try: sushi near me.", "happy"); }
+    } catch (e) { say(e.message, "worried"); }
+  });
+
+  // You said yes before and the browser still allows it: carry on quietly, no new prompt.
+  (async () => {
+    let ok = false;
+    try { ok = localStorage.getItem(CONSENT) === "1"; } catch (_) {}
+    if (!ok || !navigator.permissions || !window.isSecureContext) return;
+    try {
+      const state = await navigator.permissions.query({ name: "geolocation" });
+      if (state.state === "granted") shareLocation().catch(() => {});
+    } catch (_) {}
+  })();
+
+  // Places, turns and links that came with an answer. Every link opens a page: nothing is booked or paid here.
+  function linkRow(links, main) {
+    const row = el("div", "links");
+    links.filter((l) => /^(https?:|tel:)/i.test(l.url || "")).forEach((l, i) => {  // web pages and phone numbers only
+      const a = el("a", main && i === 0 ? "main" : "", l.label);
+      a.href = l.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+      row.append(a);
+    });
+    return row;
+  }
+  function renderAround(p) {
+    const panel = $("aroundPanel");
+    const list = (p && p.items) || [], links = (p && p.links) || [];
+    if (!list.length && !links.length) return false;
+    $("aroundTitle").textContent = p.skill === "directions" ? "The way there" : p.skill === "booking" ? "Booking" : "Around you";
+    $("places").replaceChildren(...list.map((it) => {
+      const li = el("li");
+      li.append(el("b", "", it.title));
+      if (it.note) li.append(el("span", "note", it.note));
+      if (it.links && it.links.length) li.append(linkRow(it.links, false));
+      return li;
+    }));
+    $("aroundLinks").replaceChildren(...(links.length ? linkRow(links, true).childNodes : []));
+    $("aroundNote").textContent = (p.sources || []).join(" · ");
+    panel.hidden = false;
+    return true;
+  }
+
+  async function askChief(text, again) {
     asking = true;
     setMood("thinking");
     $("heard").textContent = "You: " + (looksSecret(text) ? "(hidden)" : text);
@@ -1783,7 +1934,19 @@
       const out = await api("/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
       asking = false;
       working("");
-      say(out.say, out.proposal && out.proposal.actions.length ? "waiting" : "happy");
+      if (out.proposal && out.proposal.needs === "location" && !again) {
+        renderAround(out.proposal);
+        clearInterval(watch);
+        say("Can I use your live location? Then I can check what's near you.", "waiting");
+        if (!(await askConsent())) { say("Okay, I won't. You can tell me where you are instead, like: I'm at MG Road.", "idle"); return; }
+        try { await shareLocation(); return askChief(text, true); }  // then answer what you asked
+        catch (e) { say(e.message, "worried"); return; }
+      }
+      if (renderAround(out.proposal) && pet && !touring && !guidingNow) {
+        guideTo($("aroundPanel"), out.say, $("aroundPanel").querySelector(".links a"), 12000);  // walks over and reads it there
+      } else {
+        say(out.say, out.proposal && out.proposal.actions.length ? "waiting" : "happy");
+      }
       setTimeout(() => { if ($("chief").dataset.mood === "happy") setMood("idle"); }, 2400);
     } catch (e) {
       asking = false;
@@ -1792,6 +1955,14 @@
     }
     clearInterval(watch);
     poll(); loadData();
+  }
+
+  $("askForm").addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const box = $("text"), text = box.value.trim();
+    if (!text) return;
+    box.value = "";
+    askChief(text);
   });
 
   // Real camera footage by day and at sunset. There is no night clip, so the 3D world takes the dark.

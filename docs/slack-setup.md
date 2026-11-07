@@ -34,7 +34,11 @@ works for public channels.
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
 SLACK_CHANNEL=C0123456789
+SLACK_USER_ID=U0123456789
 ```
+
+`SLACK_USER_ID` is your Slack member ID (your profile, the three dots, Copy member ID). Only your clicks approve or
+skip a card: anyone else in the channel can see the cards, but their clicks are ignored. Chief won't start without it.
 
 `.env` is gitignored; never commit it.
 

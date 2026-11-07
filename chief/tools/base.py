@@ -12,7 +12,9 @@ from datetime import datetime
 
 from chief.models import Email, Event, SleepDay
 
-READ_TOOLS = {"list_events", "find_free_slots", "fetch_emails", "fetch_thread", "search_web", "read_health", "list_folder"}
+# Maps (chief/places.py): reads that are never cached, so where you have been is never written to disk.
+PLACE_TOOLS = {"find_places", "find_location", "get_route"}
+READ_TOOLS = {"list_events", "find_free_slots", "fetch_emails", "fetch_thread", "search_web", "read_health", "list_folder"} | PLACE_TOOLS
 SAFE_WRITE_TOOLS = {"create_draft", "post_slack", "open_folder", "open_file"}  # the last two only open things on screen
 WRITE_TOOLS = {"patch_event", "create_event", "delete_event", "send_email"}
 ALL_TOOLS = READ_TOOLS | SAFE_WRITE_TOOLS | WRITE_TOOLS
@@ -47,6 +49,28 @@ class Tools:
     def list_folder(self, path: str) -> dict:
         """Names and kinds inside an allow-listed folder, never contents. See chief/tools/local.py."""
         self._todo("list_folder")
+
+    # --- maps: OpenStreetMap by default (chief/places.py); MockTools uses made-up sample places
+    @property
+    def places(self):
+        found = getattr(self, "_places", None)
+        if found is None:
+            from chief.places import OpenMap
+
+            found = self._places = OpenMap()
+        return found
+
+    def find_places(self, what: str, lat: float, lon: float, radius_m: int = 1500, limit: int = 8) -> list:
+        """Places of a kind ("sushi", "pharmacy") around a point, closest first. Returns [chief.places.Spot]."""
+        return self.places.find_places(what, lat, lon, radius_m, limit)
+
+    def find_location(self, text: str, near_lat: float | None = None, near_lon: float | None = None):
+        """One place or address by name, preferring matches near a point. Returns chief.places.Spot or None."""
+        return self.places.find_location(text, near_lat, near_lon)
+
+    def get_route(self, from_lat: float, from_lon: float, to_lat: float, to_lon: float, mode: str = "foot"):
+        """A route on foot, by bike or by car. Returns chief.places.Route."""
+        return self.places.get_route(from_lat, from_lon, to_lat, to_lon, mode)
 
     # --- safe writes
     def create_draft(self, to: str, subject: str, body: str, thread_id: str | None = None) -> dict:

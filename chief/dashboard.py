@@ -95,7 +95,13 @@ def opening(hour: float, meetings: list[dict], mail: dict, days: list[dict], mis
         lines.append("I can't reach your calendar right now.")
     elif meetings:
         first = meetings[0]
-        lines.append(f"You've got {_plural(len(meetings), 'meeting')} today, starting with {first['title']} at {first['clock']}.")
+        ahead = [m for m in meetings if m["end"] > hour]
+        if not ahead:  # evening: don't greet with a meeting that already happened
+            lines.append(f"Your {_plural(len(meetings), 'meeting')} for today {'is' if len(meetings) == 1 else 'are'} done.")
+        elif ahead[0] is not first:
+            lines.append(f"You've got {_plural(len(ahead), 'meeting')} left today. Next is {ahead[0]['title']} at {ahead[0]['clock']}.")
+        else:
+            lines.append(f"You've got {_plural(len(meetings), 'meeting')} today, starting with {first['title']} at {first['clock']}.")
     else:
         lines.append("Your calendar's clear today.")
     if "mail" in missing:

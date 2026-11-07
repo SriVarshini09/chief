@@ -41,7 +41,15 @@ class Memory:
             self._save()
             return before - len(self.records)
 
+    LOG_LIMIT = 2_000_000  # bytes; then the diary moves to activity.1.jsonl (replacing the older one) and starts again
+
     def log(self, event: str, **fields) -> None:
         line = {"at": datetime.now().isoformat(timespec="seconds"), "event": event, **fields}
-        with self._lock, self.log_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(line, default=str) + "\n")
+        with self._lock:
+            try:
+                if self.log_path.stat().st_size > self.LOG_LIMIT:
+                    self.log_path.replace(self.log_path.with_name("activity.1.jsonl"))
+            except OSError:
+                pass  # no diary yet, or it is busy: write to it as it is
+            with self.log_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(line, default=str) + "\n")

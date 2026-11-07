@@ -164,3 +164,19 @@ def test_mock_mode_is_quiet(tmp_path):
     assert not blocking(checks)
     assert {c.name for c in checks if c.status == "warn"} <= {"cloudflared (phone tunnel)"}  # a laptop with nothing live set up is not nagged
     assert by_name(checks)["Package composio"].status == "info"
+
+
+def test_mock_mode_without_the_web_extras_is_not_an_alarm(tmp_path):
+    """Found in the fresh-install test: a plain mock install got '2 critical problems' (uvicorn missing, port busy)."""
+    lines = []
+    deps = fake(has_module=lambda name: name != "uvicorn", port_free=lambda port: False)
+    code = doctor.doctor_main(cfg(tmp_path, mode="mock"), deps=deps, offline=True, out=lines.append)
+    report = "\n".join(lines)
+    assert code == 0 and "All critical checks passed." in report
+    assert "missing (needed for web)" in report and "already in use" in report  # still reported, as warnings
+
+
+def test_the_demo_launcher_still_needs_the_web_extras(tmp_path):
+    deps = fake(has_module=lambda name: name != "uvicorn", port_free=lambda port: False)
+    checks = run_checks(cfg(tmp_path, mode="mock"), deps, offline=True)
+    assert {c.name for c in blocking(checks)} >= {"Package uvicorn", "Port 8765"}

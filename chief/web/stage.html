@@ -227,7 +227,16 @@
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const TOKEN = new URLSearchParams(location.search).get("token") || "";
+  const TOKEN = (() => {  // the token is kept for this tab only, then taken out of the address bar (history, screen shares)
+    const p = new URLSearchParams(location.search), t = p.get("token");
+    if (t) {
+      try { sessionStorage.setItem("chief-token", t); } catch (_) {}
+      p.delete("token");
+      history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : "") + location.hash);
+      return t;
+    }
+    try { return sessionStorage.getItem("chief-token") || ""; } catch (_) { return ""; }
+  })();
   const HEADERS = { "X-Chief-Token": TOKEN };
 
   const POLL_MS = 500;       // how often /stage/events is asked for news

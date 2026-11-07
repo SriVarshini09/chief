@@ -140,7 +140,7 @@ def test_start_shows_help_and_a_photo_is_refused_politely(bot, api):
     bot.handle(message("/start"))
     bot.handle({"update_id": 3, "message": {"from": {"id": OWNER}, "chat": {"id": OWNER}}})
     assert "change nothing until you approve" in api.texts()[0]
-    assert "only read text" in api.texts()[1]
+    assert "read text and your shared location" in api.texts()[1]
 
 
 def test_a_failure_while_handling_is_reported_not_raised(bot, api, monkeypatch):

@@ -29,6 +29,7 @@ def client(rt):
 
 def test_stage_routes_need_the_token(client):
     for path in ("/stage", "/stage/events", "/stage/calendar"):
+        client.cookies.clear()  # a stranger: never opened the link, so has no cookie either
         assert client.get(path).status_code == 401, path
         assert client.get(path, headers={"X-Chief-Token": "nope"}).status_code == 401, path
         assert client.get(path, params={"token": TOKEN}).status_code == 200, path

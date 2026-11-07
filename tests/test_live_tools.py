@@ -173,7 +173,7 @@ def test_patch_event_maps_fields():
     slug, args = c.executed()[0]
     assert slug == "GOOGLECALENDAR_PATCH_EVENT"
     assert args == {"event_id": "ev1", "calendar_id": "primary", "summary": "[Async] X", "description": "d",
-                    "start_time": "2026-10-22T09:30:00-07:00"}
+                    "start_time": "2026-10-22T09:30:00-07:00", "send_updates": "none"}
 
 
 def test_patch_event_refuses_unknown_fields():
@@ -192,7 +192,7 @@ def test_create_and_delete_event():
     assert s1 == "GOOGLECALENDAR_CREATE_EVENT"
     assert a1["start_datetime"] == "2026-10-22T13:00:00-07:00" and a1["end_datetime"] == "2026-10-22T14:30:00-07:00"
     assert a1["summary"] == "Focus" and a1["send_updates"] == "none" and "timezone" not in a1
-    assert (s2, a2) == ("GOOGLECALENDAR_DELETE_EVENT", {"event_id": "ev1", "calendar_id": "primary"})
+    assert (s2, a2) == ("GOOGLECALENDAR_DELETE_EVENT", {"event_id": "ev1", "calendar_id": "primary", "send_updates": "none"})
 
 
 def test_named_timezone_is_sent_when_configured():

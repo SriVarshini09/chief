@@ -19,13 +19,23 @@ def _serve_web(rt: Runtime, host: str, port: int) -> int:
     try:
         from chief.web.app import serve
     except ImportError:
-        print('The web page needs the live extras: pip install -e ".[live]"')
+        print('The web page needs the web extras: pip install -e ".[web]"')
         return 1
-    token = os.getenv("CHIEF_WEB_TOKEN") or secrets.token_urlsafe(16)
-    print(f"Chief voice page ({rt.cfg.mode} mode): http://localhost:{port}/?token={token}")
-    print(f"Garden dashboard: http://localhost:{port}/dashboard?token={token}")
+    from chief.config import MAKE_TOKEN, token_problem
+
+    token = os.getenv("CHIEF_WEB_TOKEN") or secrets.token_urlsafe(24)
+    problem = token_problem(token)
+    if problem:
+        print(f"Not starting: {problem}. Anyone who guesses it could read your mail and approve changes.")
+        print(f"Make one with: {MAKE_TOKEN}  (or leave CHIEF_WEB_TOKEN unset for a random one each run)")
+        return 2
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print(f"WARNING: listening on {host}: other devices on this network can reach Chief over plain http, "
+              "and the token travels unencrypted. Use a tunnel with https, or keep the default 127.0.0.1.", flush=True)
+    print(f"Chief voice page ({rt.cfg.mode} mode): http://localhost:{port}/?token={token}", flush=True)
+    print(f"Garden dashboard: http://localhost:{port}/dashboard?token={token}", flush=True)
     if not os.getenv("CHIEF_WEB_TOKEN"):
-        print("(CHIEF_WEB_TOKEN is not set, so that token is random for this run.)")
+        print("(CHIEF_WEB_TOKEN is not set, so that token is random for this run.)", flush=True)
     from chief.telegram_app import start_with_web
 
     if start_with_web(rt):
@@ -130,25 +140,27 @@ def main(argv: list[str] | None = None) -> int:
 
     proposals = rt.tick()
     if not proposals:
-        print("Nothing worth your attention. (NO_REPLY)")
+        print("Nothing worth your attention right now. (If you skipped this before: python -m chief reset)")
         return 0
     for p in proposals:
         if args.approve:
             results = rt.gate.approve(p.id)
             print(f"\napproved {p.id}: {len(results)} action(s) ran")
         else:
+            # Enter means "not now": nothing is remembered, so `run --once --approve` still finds it.
+            # Only an explicit "n" skips for good.
             try:
-                choice = input("approve this? [y/N] ").strip().lower() if sys.stdin.isatty() else None
+                choice = input("Approve this? y = yes, n = no and don't ask again, Enter = decide later: ").strip().lower() if sys.stdin.isatty() else ""
             except EOFError:
-                choice = None
-            if choice is None:
-                print("\n(pending: run again with --approve to apply)")
-            elif choice == "y":
+                choice = ""
+            if choice in ("y", "yes"):
                 rt.gate.approve(p.id)
-                print("done.")
-            else:
+                print("Done.")
+            elif choice in ("n", "no"):
                 rt.gate.skip(p.id)
-                print("skipped.")
+                print("Skipped. Chief won't propose this again (python -m chief reset brings it back).")
+            else:
+                print("\nNothing changed. Run again with --approve to apply it.")
     return 0
 
 

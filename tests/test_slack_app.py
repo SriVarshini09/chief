@@ -32,9 +32,13 @@ class FakeApp:
         return deco
 
 
-def click(app, client, action_id, proposal_id, message_blocks=None):
+OWNER = "U0OWNER"
+
+
+def click(app, client, action_id, proposal_id, message_blocks=None, user=OWNER):
     acked = []
     body = {
+        "user": {"id": user},
         "actions": [{"action_id": action_id, "value": proposal_id}],
         "channel": {"id": "C1"},
         "message": {"ts": "111.222", "blocks": message_blocks or []},
@@ -79,7 +83,7 @@ def test_notify_posts_card_to_channel():
 
 def test_approve_click_acks_runs_actions_and_updates_message(rt, tools):
     client, app = FakeClient(), FakeApp()
-    slack_app.register_handlers(app, rt)
+    slack_app.register_handlers(app, rt, OWNER)
     p = rt.run_skill("audit")
     acked = click(app, client, "approve", p.id)
     assert acked == [True]
@@ -92,7 +96,7 @@ def test_approve_click_acks_runs_actions_and_updates_message(rt, tools):
 
 def test_approve_failure_is_shown_on_the_card(rt, tools, monkeypatch):
     client, app = FakeClient(), FakeApp()
-    slack_app.register_handlers(app, rt)
+    slack_app.register_handlers(app, rt, OWNER)
     p = rt.run_skill("audit")
     monkeypatch.setattr(tools, "patch_event", lambda **_: (_ for _ in ()).throw(RuntimeError("api down")))
     monkeypatch.setattr(tools, "create_event", lambda **_: (_ for _ in ()).throw(RuntimeError("api down")))
@@ -104,7 +108,7 @@ def test_approve_failure_is_shown_on_the_card(rt, tools, monkeypatch):
 
 def test_skip_click_runs_nothing_and_updates_message(rt, tools):
     client, app = FakeClient(), FakeApp()
-    slack_app.register_handlers(app, rt)
+    slack_app.register_handlers(app, rt, OWNER)
     p = rt.run_skill("audit")
     assert click(app, client, "skip", p.id) == [True]
     assert tools.calls == [] and rt.memory.decided(p.key)
@@ -113,7 +117,7 @@ def test_skip_click_runs_nothing_and_updates_message(rt, tools):
 
 def test_unknown_id_is_acked_and_message_updated_without_error(rt, tools):
     client, app = FakeClient(), FakeApp()
-    slack_app.register_handlers(app, rt)
+    slack_app.register_handlers(app, rt, OWNER)
     old = slack_app.proposal_blocks(Proposal("audit", "old", [], key="k", id="gone"))
     assert click(app, client, "approve", "gone", old) == [True]
     blocks = client.updates[0]["blocks"]
@@ -123,7 +127,7 @@ def test_unknown_id_is_acked_and_message_updated_without_error(rt, tools):
 
 def test_double_click_only_runs_once(rt, tools):
     client, app = FakeClient(), FakeApp()
-    slack_app.register_handlers(app, rt)
+    slack_app.register_handlers(app, rt, OWNER)
     p = rt.run_skill("audit")
     click(app, client, "approve", p.id)
     n = len(tools.calls)
@@ -138,13 +142,32 @@ def test_handler_survives_a_slack_api_error(rt):
             raise RuntimeError("slack down")
 
     app = FakeApp()
-    slack_app.register_handlers(app, rt)
+    slack_app.register_handlers(app, rt, OWNER)
     p = rt.run_skill("audit")
     assert click(app, Boom(), "skip", p.id) == [True]  # acked, no exception escapes
 
 
 def test_slack_subcommand_reports_missing_tokens(monkeypatch, capsys):
-    for v in ("SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL"):
+    for v in ("SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL", "SLACK_USER_ID"):
         monkeypatch.delenv(v, raising=False)
     assert main(["slack"]) == 2
     assert "SLACK_BOT_TOKEN" in capsys.readouterr().out
+
+
+def test_someone_else_in_the_channel_cannot_approve(rt, tools):
+    """Found in the security review: any channel member's click used to approve, so it could send your email."""
+    client, app = FakeClient(), FakeApp()
+    slack_app.register_handlers(app, rt, OWNER)
+    p = rt.run_skill("audit")
+    assert click(app, client, "approve", p.id, user="U0STRANGER") == [True]  # acked, then ignored
+    assert p.id in rt.gate.pending and tools.calls == [] and client.updates == []
+    click(app, client, "skip", p.id, user="U0STRANGER")
+    assert p.id in rt.gate.pending
+
+
+def test_without_an_owner_no_click_counts(rt, tools):
+    client, app = FakeClient(), FakeApp()
+    slack_app.register_handlers(app, rt, "")
+    p = rt.run_skill("audit")
+    click(app, client, "approve", p.id)
+    assert p.id in rt.gate.pending and tools.calls == []

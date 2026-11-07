@@ -38,6 +38,7 @@ HELP = (
     "Try:\n"
     "- What's in my inbox?\n"
     "- How's my week looking?\n"
+    "- Sushi near me (tap Share my location when I ask)\n"
     "- Reply to Sam and say Friday works\n"
     "- Morning brief"
 )
@@ -59,11 +60,16 @@ class TelegramApi:
         return data.get("result")
 
 
-def card_text(p: Proposal) -> str:
+def card_text(p: Proposal, plain: list[str] | None = None) -> str:
     """Everything the person needs in order to decide, in plain words."""
     lines = [p.summary]
+    if p.items:
+        lines += [""] + [item["title"] + (f"\n   {item['note']}" if item.get("note") else "") for item in p.items[:8]]
+    phones = [link["url"][4:] for link in p.links if link["url"].startswith("tel:")]
+    if phones:
+        lines += ["", "Phone: " + ", ".join(phones)]
     if p.actions:
-        lines += ["", "If you approve, I will:"] + [f"- {a.plain()}" for a in p.actions]
+        lines += ["", "If you approve, I will:"] + [f"- {text}" for text in (plain or [a.plain() for a in p.actions])]
     if p.sources:
         lines += ["", "Sources:"] + [f"- {s}" for s in p.sources]
     return "\n".join(lines)
@@ -79,6 +85,33 @@ def buttons(proposal_id: str) -> dict:
         {"text": "Approve", "callback_data": f"{APPROVE}:{proposal_id}"},
         {"text": "Skip", "callback_data": f"{SKIP}:{proposal_id}"},
     ]]}
+
+
+LOCATION_KEYBOARD = {  # Telegram's own button: the phone asks you, then sends where you are
+    "keyboard": [[{"text": "\U0001F4CD Share my location", "request_location": True}]],
+    "resize_keyboard": True, "one_time_keyboard": True,
+}
+
+
+def _web(url: str) -> bool:
+    return url.startswith(("https://", "http://"))  # Telegram buttons cannot open tel: links
+
+
+def markup(p: Proposal) -> dict | None:
+    """Link buttons (directions, a booking page), then Approve / Skip. A location request gets Telegram's button."""
+    if p.needs == "location" and not p.links:
+        return LOCATION_KEYBOARD
+    rows = []
+    top = [{"text": link["label"], "url": link["url"]} for link in p.links if _web(link["url"])][:3]
+    if top:
+        rows.append(top)
+    for n, item in enumerate(p.items[:5], 1):
+        row = [{"text": f"{n} · {link['label']}", "url": link["url"]} for link in item.get("links", []) if _web(link["url"])][:2]
+        if row:
+            rows.append(row)
+    if p.actions:
+        rows += buttons(p.id)["inline_keyboard"]
+    return {"inline_keyboard": rows} if rows else None
 
 
 def brief_due(rt: Runtime, now: datetime) -> bool:
@@ -106,6 +139,8 @@ class Bot:
         self.cards_sent = 0
         self.offset: int | None = None
         self.next_tick = 0.0
+        self.asking = ""  # what you just asked
+        self.waiting_for_location = ""  # the question to answer once you share where you are
 
     def attach(self, rt: Runtime) -> "Bot":
         self.rt = rt
@@ -122,16 +157,24 @@ class Bot:
     def notify(self, p: Proposal) -> None:
         """The gate's notify: every proposal becomes a card, and a card with actions gets buttons."""
         self.cards_sent += 1
-        self.send(card_text(p), buttons(p.id) if p.actions else None)
+        if p.needs == "location":
+            self.waiting_for_location = self.asking
+        text = card_text(p, self.rt.gate.plain(p) if self.rt else None)
+        if p.needs == "location" and not p.links:
+            text += ("\n\nTap Share my location below. To keep it live while you walk: "
+                     "tap the paperclip, then Location, then Share My Live Location.")
+        self.send(text, markup(p))
 
     def handle(self, update: dict) -> None:
         """One update from Telegram. Never raises: a bad update must not be retried forever."""
         try:
-            click, message = update.get("callback_query"), update.get("message")
+            click, message, edited = update.get("callback_query"), update.get("message"), update.get("edited_message")
             if click and self._from_owner(click, click.get("message") or {}):
                 self._on_click(click)
             elif message and self._from_owner(message, message):
                 self._on_message(message)
+            elif edited and edited.get("location") and self._from_owner(edited, edited):
+                self._on_live(edited["location"])  # a live location moving: update quietly, no reply
         except Exception as exc:
             log.warning("telegram update failed: %s", type(exc).__name__)
             self._try_send("Sorry, something went wrong.")
@@ -147,16 +190,38 @@ class Bot:
             log.warning("telegram send failed: %s", type(exc).__name__)
 
     def _on_message(self, message: dict) -> None:
+        if message.get("location"):
+            return self._on_location(message["location"])
         text = (message.get("text") or "").strip()[:MAX_TEXT_CHARS]
         if not text:
-            return self.send("I can only read text here for now.")
+            return self.send("I can read text and your shared location here.")
         if text.split()[0] in ("/start", "/help"):
             return self.send(HELP)
+        self._answer(text)
+
+    def _answer(self, text: str) -> None:
         with self.rt.turn_lock:
-            self.cards_sent = 0
+            self.cards_sent, self.asking = 0, text
             out = handle_utterance(self.rt, text)
             if not self.cards_sent:  # a card already said it
                 self.send(out["say"], self._undo_button())
+
+    def _on_live(self, loc: dict) -> None:
+        try:
+            self.rt.where.set(float(loc["latitude"]), float(loc["longitude"]), source="telegram", now=self.rt.now())
+        except (KeyError, TypeError, ValueError):
+            pass
+
+    def _on_location(self, loc: dict) -> None:
+        """You tapped Share my location: remember it (in memory only) and answer what you asked."""
+        try:
+            self.rt.where.set(float(loc["latitude"]), float(loc["longitude"]), source="telegram", now=self.rt.now())
+        except (KeyError, TypeError, ValueError):
+            return self.send("That location didn't come through. Try again?")
+        question, self.waiting_for_location = self.waiting_for_location, ""
+        if question:
+            return self._answer(question)
+        self.send("Got your location. Ask me: sushi near me, or how do I get to the station?", {"remove_keyboard": True})
 
     def _undo_button(self) -> dict | None:
         state = self.rt.gate.undo_state()
@@ -197,7 +262,7 @@ class Bot:
             log.warning("telegram schedule failed: %s", type(exc).__name__)
 
     def poll(self) -> None:
-        params: dict = {"timeout": POLL_SECONDS, "allowed_updates": ["message", "callback_query"]}
+        params: dict = {"timeout": POLL_SECONDS, "allowed_updates": ["message", "edited_message", "callback_query"]}
         if self.offset is not None:
             params["offset"] = self.offset
         for update in self.api.call("getUpdates", **params):
@@ -272,7 +337,7 @@ def run_telegram(cfg: Config) -> int:
     try:
         import httpx
     except ImportError:
-        print('Telegram needs the live extras: pip install -e ".[live]"')
+        print('Telegram needs the web extras: pip install -e ".[web]"')
         return 2
     owner = os.getenv("TELEGRAM_USER_ID", "").strip()
     if owner and not owner.isdigit():

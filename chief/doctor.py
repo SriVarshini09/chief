@@ -163,7 +163,10 @@ def real_live_calls(cfg: Config, env: dict[str, str]) -> dict[str, Callable[[], 
 # --------------------------------------------------------------------------- the checks
 
 
-def run_checks(cfg: Config, deps: Deps | None = None, *, live: bool = False, offline: bool = False, port: int = 8765) -> list[Check]:
+def run_checks(cfg: Config, deps: Deps | None = None, *, live: bool = False, offline: bool = False, port: int = 8765,
+               web_critical: bool = True) -> list[Check]:
+    """`web_critical`: the web page's packages and port block the run (the demo launcher). `chief doctor` in mock
+    mode passes False: trying Chief on sample data from the terminal needs neither, so they are warnings there."""
     d = deps or Deps()
     env = d.env
     mode = cfg.mode
@@ -184,9 +187,9 @@ def run_checks(cfg: Config, deps: Deps | None = None, *, live: bool = False, off
     # -- packages
     for module, pip_name, why in EXTRA_PACKAGES:
         have = d.has_module(module)
-        need = why == "web" or (why == "live" and needs_live)
+        need = (why == "web" and web_critical) or (why == "live" and needs_live)
         add(f"Package {pip_name}", OK if have else (FAIL if need else soft), "installed" if have else f"missing (needed for {why})",
-            "" if have else 'pip install -e ".[live]"', critical=need)
+            "" if have else f'pip install -e ".[{"web" if why == "web" else "live"}]"', critical=need)
     if d.platform.startswith("win") and not d.has_module("tzdata"):
         add("Package tzdata", soft, "missing (only needed if CHIEF_TIMEZONE is set)", 'pip install -e ".[live]"')
     add("QR code package", INFO, "qrcode or segno found: the phone URL will print as a QR code" if (d.has_module("qrcode") or d.has_module("segno"))
@@ -244,7 +247,8 @@ def run_checks(cfg: Config, deps: Deps | None = None, *, live: bool = False, off
     add("cloudflared (phone tunnel)", OK if tunnel else WARN, "installed" if tunnel else "not installed",
         "" if tunnel else "winget install --id Cloudflare.cloudflared  (the phone mic needs HTTPS; Chief never installs it for you)")
     free = d.port_free(port)
-    add(f"Port {port}", OK if free else FAIL, "free" if free else "already in use", "" if free else f"stop whatever uses it, or pick another with --port", critical=True)
+    add(f"Port {port}", OK if free else (FAIL if web_critical else WARN), "free" if free else "already in use",
+        "" if free else "stop whatever uses it, or pick another with --port", critical=web_critical)
     if cfg.show_windows:
         try:
             add("Browser for real windows", OK, d.browser(cfg.show_browser))
@@ -304,6 +308,6 @@ def format_report(checks: list[Check]) -> str:
 
 
 def doctor_main(cfg: Config, *, live: bool = False, offline: bool = False, port: int = 8765, deps: Deps | None = None, out: Callable[[str], None] = print) -> int:
-    checks = run_checks(cfg, deps, live=live, offline=offline, port=port)
+    checks = run_checks(cfg, deps, live=live, offline=offline, port=port, web_critical=cfg.mode != "mock")
     out(format_report(checks))
     return 1 if blocking(checks) else 0

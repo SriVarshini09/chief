@@ -30,6 +30,9 @@ class MockTools(Tools):
         self.calls: list[tuple[str, dict]] = []  # every side effect, for tests and the activity panel
         self.drafts: list[dict] = []
         self.slack: list[str] = []
+        from chief.places import SamplePlaces
+
+        self._places = SamplePlaces()  # made-up places around wherever you are; real ones need live mode
         self._seed()
 
     # --- seed
@@ -150,8 +153,9 @@ _MOCK_ACME = [
 
 def _extra_mails(base: datetime) -> list[Email]:
     h = lambda n: base - timedelta(hours=n)  # noqa: E731
+    due = base + timedelta(days=9)  # always ahead of "now", whatever day you try it
     return [
-        Email("m4", "t4", "billing@vendor.example", "Invoice 1042", "MOCK: Invoice 1042 is due Oct 30. No action needed unless the amount is wrong.", h(5)),
+        Email("m4", "t4", "billing@vendor.example", "Invoice 1042", f"MOCK: Invoice 1042 is due {due:%b} {due.day}. No action needed unless the amount is wrong.", h(5)),
         Email(
             "m5", "t5", "dana@acme.example", "Acme rollout: kickoff notes",
             "Thanks for the kickoff. Can you confirm the 20-seat pilot and send the revised quote?", h(6 * 24), unread=False,
@@ -175,7 +179,7 @@ def _seed_with_external_meeting(self: MockTools) -> None:
     # heavy days (and the audit numbers that depend on them) are untouched.
     for offset in range(0, 7):
         day = (self.now + timedelta(days=offset)).replace(hour=16, minute=30, second=0, microsecond=0)
-        if day.weekday() not in health.HEAVY_WEEKDAYS:
+        if day.weekday() not in health.HEAVY_WEEKDAYS and day > self.now:  # still ahead: something to prep for
             self.events["ev-ext-acme"] = Event(
                 "ev-ext-acme", "Acme pricing review", day, day + timedelta(minutes=60),
                 attendees=["dana@acme.example", "sam@example.com"],
