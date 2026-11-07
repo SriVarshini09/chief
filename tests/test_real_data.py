@@ -36,6 +36,7 @@ def mail(snippet, sender="Sam <sam@example.com>", bulk=False):
     ("<html><body><p>Hi   there</p></body></html>", "Hi there"),
     ("<style>p { color: red }</style>Words", "Words"),
     ("Can you send it?", "Can you send it?"),
+    ("[image: Google] You allowed access", "You allowed access"),
     ("A < B and C > D", "A < B and C > D"),
 ])
 def test_plain_text(raw, expected):

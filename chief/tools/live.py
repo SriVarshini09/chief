@@ -60,6 +60,7 @@ def _plain_text(text: str) -> str:
     """The words of a message. Markup and links go first: a "?" inside a URL is not a question."""
     text = re.sub(r"(?is)<(style|script)\b.*?</\1>", " ", text)
     text = re.sub(r"(?s)<[a-zA-Z!/][^<>]{0,500}>", " ", text)
+    text = re.sub(r"\[(?:image|cid):[^\]]{0,200}\]", " ", text, flags=re.I)
     text = re.sub(r"(?i)\b(?:https?://|www\.)\S+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
