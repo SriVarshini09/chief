@@ -295,6 +295,7 @@ CUISINES: dict[str, tuple[str, str]] = {  # word -> (cuisine pattern, how to say
 KINDS: dict[str, tuple[list[str], str, str]] = {  # word -> (Overpass filters, name search, how to say it)
     "restaurant": ([_EAT], "restaurant", "places to eat"), "restaurants": ([_EAT], "restaurant", "places to eat"),
     "food": ([_EAT], "restaurant", "places to eat"), "eat": ([_EAT], "restaurant", "places to eat"),
+    "hungry": ([_EAT], "restaurant", "places to eat"), "starving": ([_EAT], "restaurant", "places to eat"),
     "dinner": ([_EAT], "restaurant", "places for dinner"), "lunch": ([_EAT], "restaurant", "places for lunch"),
     "cafe": (['["amenity"="cafe"]'], "cafe", "cafes"), "cafes": (['["amenity"="cafe"]'], "cafe", "cafes"),
     "coffee": (['["amenity"="cafe"]'], "cafe", "cafes"), "bar": (['["amenity"~"^(bar|pub)$"]'], "bar", "bars"),

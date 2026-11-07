@@ -79,7 +79,62 @@ def item_line(item: Item) -> str:
     return f"{who(item.mail.sender)} ({item.mail.subject}{extra})"
 
 
+_SPAN = re.compile(
+    r"\b(?:in|within|during|over|for)?\s*(?:the\s+)?(?:last|past)?\s*(?P<n>an?|one|two|three|\d{1,3})\s*"
+    r"(?P<unit>hrs?|hours?|h|mins?|minutes?)\b",
+    re.I,
+)
+_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3}
+
+
+def asked_window(text: str, now) -> tuple[timedelta, str] | None:
+    """'within an hr', 'in the last 3 hours', 'past 30 minutes', 'today': how far back, and how to say it."""
+    low = text.lower()
+    if re.search(r"\b(today|this morning|so far today)\b", low):
+        return now - now.replace(hour=0, minute=0, second=0, microsecond=0), "today"
+    m = _SPAN.search(low)
+    if not m:
+        if re.search(r"\b(?:last|past|within the|in the)\s+(?:hour|hr)\b", low):  # "in the last hour": one hour
+            return timedelta(hours=1), "the last hour"
+        return None
+    raw = m.group("n")
+    n = int(raw) if raw.isdigit() else _WORDS.get(raw, 1)
+    if m.group("unit").startswith("m"):
+        return timedelta(minutes=n), f"the last {n} minute{'s' * (n != 1)}"
+    return timedelta(hours=n), "the last hour" if n == 1 else f"the last {n} hours"
+
+
+def _clock(d) -> str:
+    return f"{d.hour % 12 or 12}:{d.minute:02d} {'AM' if d.hour < 12 else 'PM'}"
+
+
+def _since(ctx: Context, span: timedelta, said: str) -> Proposal:
+    """'What mail did I get in the last hour?': everything that arrived, read or not, newest first."""
+    mails = sorted(ctx.tools.fetch_emails("", MAX_MAILS), key=lambda m: m.received, reverse=True)
+    cutoff = ctx.now - span
+    fresh = [m for m in mails if m.received >= cutoff]
+    key = f"email_brief:since:{ctx.now.isoformat()}:{said}"
+    if not fresh:
+        safe = next((m for m in mails if classify(m).kind != "suspicious"), None)  # never point you at a phishing mail
+        latest = f" The latest is from {who(safe.sender)}, \"{safe.subject}\", at {_clock(safe.received)}." if safe else ""
+        return Proposal(skill="email_brief", summary=f"No new email {'today' if said == 'today' else 'in ' + said}.{latest}", actions=[], key=key)
+    items = [classify(m) for m in fresh]
+    shown = [i for i in items if i.kind != "suspicious"]
+    hidden = len(items) - len(shown)
+    lines = [f"{who(i.mail.sender)}, \"{i.mail.subject}\" at {_clock(i.mail.received)}" + (" (needs an answer)" if i.kind == "reply" else "") for i in shown[:6]]
+    count = f"{len(items)} email{'s' * (len(items) != 1)}"
+    say = ("Today" if said == "today" else f"In {said}") + f" you got {count}" + (": " + "; ".join(lines) + "." if lines else ".")
+    if len(shown) > 6:
+        say += f" And {len(shown) - 6} more."
+    if hidden:
+        say += f" {hidden} read like instructions aimed at an assistant, so I'm not repeating {'it' if hidden == 1 else 'them'}."
+    return Proposal(skill="email_brief", summary=say, actions=[], key=key)
+
+
 def run(ctx: Context) -> Proposal | None:
+    window = asked_window(ctx.request, ctx.now) if ctx.request else None
+    if window:
+        return _since(ctx, *window)
     items = [classify(m) for m in recent_unread(ctx)]
     by = {k: [i for i in items if i.kind == k] for k in ("reply", "deadline", "fyi", "suspicious")}
     if not (by["reply"] or by["deadline"] or by["suspicious"]):
@@ -115,7 +170,11 @@ SKILL = Skill(
     label="Your inbox",
     name="email_brief",
     description="Read-only briefing of recent mail: what needs a reply, deadlines and commitments, and FYI.",
-    triggers=["email brief", "brief me on my email", "what's in my inbox", "my inbox", "catch me up on email", "what did i miss"],
+    triggers=[
+        "email brief", "brief me on my email", "what's in my inbox", "my inbox", "catch me up on email", "what did i miss",
+        "mails", "emails", "my mail", "my email", "new mail", "any mail", "check mail", "check my mail", "unread",
+        "did i get", "got any mail", "inbox",
+    ],
     allowed_tools={"fetch_emails"},
     propose_tools=set(),
     run=run,

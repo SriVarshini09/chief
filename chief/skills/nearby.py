@@ -156,7 +156,7 @@ _FILLER = set(
     "here close closest nearest by to is are there where what what's whats can i we get go for of in at on with please chief "
     "hey ok okay so and also my location us area this that one ones something somewhere which do you know recommend suggest "
     "tell look looking search want need like would could should me some walking distance within minutes minute walk from "
-    "current any good is there are there right".split()
+    "current any good is there are there right i'm im i am feeling so really very".split()
 )
 _FORGET = re.compile(r"\b(forget|clear|stop using|delete|remove)\b.*\b(my )?location\b", re.I)
 _EAT_SAY = ("places to eat", "places for", "places")

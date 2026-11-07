@@ -20,7 +20,15 @@ from chief.when import at, day_in, say_day, times_in
 _WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
 _PARTY = re.compile(
     r"\b(?:for|party of|table of|of us|we are|we're)\s+(?P<n>\d{1,2}|" + "|".join(_WORDS) + r")\b(?!\s*(?::|am\b|pm\b|a\.m|p\.m|o'?clock|minutes|mins|hours))"
-    r"|\b(?P<m>\d{1,2}|" + "|".join(_WORDS) + r")\s+(?:people|persons|guests|adults|of us|pax)\b",
+    r"|\b(?P<m>\d{1,2}|" + "|".join(_WORDS) + r")\s+(?:people|persons|guests|adults|of us|pax|seats?|members|ppl)\b",
+    re.I,
+)
+# "book 2 seats for restaurant for Lemon Crab Hayward": the name after "for" (or "at") that is not a number, a time or a meal
+_FOR_NAME = re.compile(
+    r"\b(?:for|at)\s+(?:the\s+)?(?:restaurant\s+|place\s+)?(?:called\s+|named\s+)?"
+    r"(?!\d|for\b|a\b|an\b|me\b|us\b|tonight|today|tomorrow|dinner|lunch|breakfast|brunch|restaurant\b|place\b|noon|midnight|"
+    + "|".join(rf"{w}\b" for w in _WORDS) +
+    r")(?P<n>[a-z][^,.;!?]*?)(?=\s+(?:for|at|on|tomorrow|tonight|today|this|next|around|by)\b|[,.;!?]|$)",
     re.I,
 )
 _NAMED = re.compile(
@@ -46,7 +54,11 @@ def _when(ctx: Context, text: str):
     if not times:
         return None
     day = day_in(text, ctx.now)
-    start = at(day or ctx.now.date(), times[0])
+    hour, minute = times[0]
+    said_morning = re.search(r"\d\s*a\.?m\b|\bmorning\b|\bbreakfast\b|\bbrunch\b", text, re.I)
+    if 8 <= hour <= 10 and not said_morning:  # "a table at 8" means the evening, unless you said am or breakfast
+        hour += 12
+    start = at(day or ctx.now.date(), (hour, minute))
     if day is None and start < ctx.now:
         start += timedelta(days=1)  # "at 7pm" said at 9pm means tomorrow
     return start
@@ -65,9 +77,13 @@ def _restaurant(ctx: Context, text: str) -> Spot | None:
     if chosen:
         return chosen
     m = _NAMED.search(text)
-    if not m:
+    found = [f.group("n").strip() for f in _FOR_NAME.finditer(text)]
+    if m:
+        name = m.group("n").strip()
+    elif found:
+        name = found[-1]  # the last one is the most specific: "for restaurant for Lemon Crab Hayward"
+    else:
         return None
-    name = m.group("n").strip()
     here = ctx.where.here(ctx.now)
     return ctx.tools.find_location(name, here.lat if here else None, here.lon if here else None)
 
@@ -118,7 +134,10 @@ def run(ctx: Context) -> Proposal:
     party, start = _party(text), _when(ctx, text)
     links = _links(spot)
     if start is None:
-        say = f"What time should I plan {spot.name} for, and for how many? Try: book it for 2 at 7pm."
+        if party:
+            say = f"Lovely, {spot.name} for {party}. What time would you like? Try: 7pm tonight, or tomorrow at 8."
+        else:
+            say = f"What time should I plan {spot.name} for, and for how many? Try: book it for 2 at 7pm."
         return Proposal("booking", say, [], _id(), links=links, sources=[CREDIT])
 
     people = party or 2
@@ -152,6 +171,8 @@ SKILL = Skill(
         "book a table", "book table", "reserve a table", "table for", "make a reservation", "reservation at",
         "reservation for", "book tickets", "book a ticket", "buy tickets", "get tickets", "book it for", "reserve it",
         "book the first", "book the second", "book number", "reserve the first", "book that place",
+        "seats for", "seats at", "seat for", "book seats", "reserve seats", "a reservation", "booking for", "booking at",
+        "book 2", "book 3", "book 4", "book 5", "book 6", "book two", "book three", "book four",
     ],
     allowed_tools={"find_places", "find_location"},
     propose_tools={"create_event"},
