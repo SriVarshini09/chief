@@ -129,6 +129,12 @@ def run(ctx: Context) -> Proposal:
     if route.sample:
         say += " (Sample route: switch to live mode for real ones.)"
     items = [{"title": f"{i}. {s}"} for i, s in enumerate(route.steps, 1)]
+    for item, text, point in zip(items, route.steps, route.points):  # where each turn is, for "Guide me" (added fields only)
+        if point.text == text and point.lat is not None and point.lon is not None:
+            item.update({"say": point.say, "lat": round(point.lat, 6), "lon": round(point.lon, 6),
+                         "distance_m": round(point.distance_m), "kind": point.kind})
+    if items and any("lat" in it for it in items):
+        items[0]["guide"] = route.mode == "foot"  # the page offers Guide me on walking routes
     return Proposal("directions", say, [], _id(), sources=[CREDIT], links=links, items=items)
 
 

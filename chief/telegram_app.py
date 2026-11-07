@@ -19,6 +19,7 @@ import time
 from datetime import datetime
 from typing import Any
 
+from chief import guide as walking_guide
 from chief.config import Config
 from chief.gate import results_text
 from chief.intent import handle_utterance
@@ -208,9 +209,14 @@ class Bot:
 
     def _on_live(self, loc: dict) -> None:
         try:
-            self.rt.where.set(float(loc["latitude"]), float(loc["longitude"]), source="telegram", now=self.rt.now())
+            here = self.rt.where.set(float(loc["latitude"]), float(loc["longitude"]), source="telegram", now=self.rt.now())
         except (KeyError, TypeError, ValueError):
-            pass
+            return
+        if self.rt.where.guide is not None:  # walking guidance: the next instruction near each turn, nothing otherwise
+            acc = loc.get("horizontal_accuracy")
+            out = walking_guide.tick(self.rt.where, self.rt.tools, here.lat, here.lon, float(acc) if isinstance(acc, (int, float)) else None)
+            if out.get("say"):
+                self._try_send(out["say"])
 
     def _on_location(self, loc: dict) -> None:
         """You tapped Share my location: remember it (in memory only) and answer what you asked."""

@@ -48,7 +48,7 @@ def results_text(results: list[dict]) -> str:
 
 
 # Answers about places say where you are ("Sakura, 120 m away"), so they are never written to the state folder.
-WHERE_SKILLS = {"nearby", "directions", "booking"}
+WHERE_SKILLS = {"nearby", "directions", "booking", "guide"}
 
 
 def _saved(proposal) -> str:

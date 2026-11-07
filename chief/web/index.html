@@ -281,6 +281,21 @@
     } catch (e) { setError(e.message); }
   });
 
+  // ---- walking guidance (guide.js): Guide me on walking directions, spoken turn by turn ---------
+  (() => {
+    const s = document.createElement("script");
+    s.src = "/guide.js?token=" + encodeURIComponent(TOKEN);
+    s.onload = () => window.ChiefGuide && ChiefGuide.init({
+      api, speak: (t) => { primeSpeech(); speak(t); },
+      ensureLocation: async () => {  // the same consent card as everywhere else, before the browser is asked
+        if (haveLocation) return true;
+        if (!(await askConsent())) return false;
+        try { await shareLocation(); return true; } catch (e) { setError(e.message); return false; }
+      },
+    });
+    document.head.append(s);
+  })();
+
   // Places, turns and links that came with an answer. Every link opens a page; nothing is booked or paid here.
   function linkRow(links, first) {
     const row = document.createElement("div"); row.className = "links";
@@ -308,6 +323,7 @@
       box.append(ul);
     }
     if (p.links && p.links.length) box.append(linkRow(p.links, true));
+    if (window.ChiefGuide) ChiefGuide.offer(p, box);
   }
 
   // ---- ask --------------------------------------------------------------
@@ -338,6 +354,7 @@
         return;
       }
       speak(out.say);
+      if (window.ChiefGuide) ChiefGuide.handle(out.proposal);  // "guide me there" / "stop guiding"
     } catch (e) {
       setError(e.message);
     } finally {

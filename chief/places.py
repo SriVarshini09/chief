@@ -74,12 +74,25 @@ class Here:
 
 
 @dataclass
+class Step:
+    """One instruction of a route and where it happens, for walking guidance. Memory only, like the route."""
+    text: str  # as read out: "Turn left onto Hyde Street for 1.2 km"
+    say: str  # the instruction alone: "Turn left onto Hyde Street"
+    lat: float | None = None  # where the turn is (OSRM maneuver.location); None if the router did not say
+    lon: float | None = None
+    distance_m: float = 0.0  # from this point to the next instruction
+    kind: str = ""  # depart, turn, roundabout, arrive ...
+    street: str = ""
+
+
+@dataclass
 class Route:
     mode: str  # foot, bike, car
     distance_m: float
     minutes: float
     steps: list[str] = field(default_factory=list)
     sample: bool = False
+    points: list[Step] = field(default_factory=list)  # every instruction with its place, depart to arrive (not cut at 14)
 
 
 class Whereabouts:
@@ -91,6 +104,7 @@ class Whereabouts:
         self._here: Here | None = None
         self.spots: list[Spot] = []  # the last list Chief read out: "the first one", "number 2"
         self.chosen: Spot | None = None  # the place we were just talking about: "take me there"
+        self.guide: Any = None  # a walk being guided turn by turn (chief.guide.Guide), memory only
         self.lock = threading.Lock()
 
     def set(self, lat: float, lon: float, label: str = "", source: str = "", now: datetime | None = None) -> Here:
@@ -112,7 +126,7 @@ class Whereabouts:
 
     def clear(self) -> None:
         with self.lock:
-            self._here, self.spots, self.chosen = None, [], None
+            self._here, self.spots, self.chosen, self.guide = None, [], None, None
 
 
 # ---- distances, times and links -----------------------------------------------------------------------
@@ -496,7 +510,7 @@ class OpenMap:
             raise LookupError(f"no {mode} route found ({data.get('code') or 'no answer'})")
         r = routes[0]
         steps = [s for leg in r.get("legs", []) for s in leg.get("steps", [])]
-        return Route(mode, float(r.get("distance", 0)), float(r.get("duration", 0)) / 60, _steps(steps))
+        return Route(mode, float(r.get("distance", 0)), float(r.get("duration", 0)) / 60, _steps(steps), points=_points(steps))
 
 
 def _closest(spots: list[Spot], lat: float, lon: float, within: float, limit: int) -> list[Spot]:
@@ -515,39 +529,73 @@ def _closest(spots: list[Spot], lat: float, lon: float, within: float, limit: in
 _COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"]
 
 
+def _instruction(s: dict, street: str) -> tuple[str, str] | None:
+    """(kind, what to do) for one OSRM step, or None when it says nothing new (still the same road)."""
+    m = s.get("maneuver") or {}
+    kind, mod, name = m.get("type", ""), (m.get("modifier") or "").replace("_", " "), s.get("name") or ""
+    onto = f" onto {name}" if name else ""
+    if kind == "depart":
+        heading = _COMPASS[int(((m.get("bearing_after") or 0) + 22.5) // 45) % 8]
+        return kind, f"Head {heading}" + (f" on {name}" if name else "")
+    if kind == "arrive":
+        return kind, "Arrive" + (" on your " + mod if mod in ("left", "right") else "")
+    if kind in ("roundabout", "rotary", "roundabout turn"):
+        return kind, f"At the roundabout, take exit {m.get('exit') or 1}{onto}"
+    if kind in ("new name", "continue") or mod == "straight":
+        if not name or name == street:
+            return None  # still the same road: nothing new to say
+        return kind, f"Continue{onto}"
+    if kind == "end of road":
+        return kind, f"At the end of the road, turn {mod}{onto}"
+    if kind in ("fork", "merge", "on ramp", "off ramp"):
+        return kind, f"Keep {mod or 'ahead'}{onto}"
+    return kind or "turn", f"Turn {mod}{onto}" if mod else f"Go{onto}"
+
+
 def _steps(raw: list[dict]) -> list[str]:
     out: list[str] = []
     street = ""  # the road the last instruction put you on
     for s in raw:
-        m = s.get("maneuver") or {}
-        kind, mod, name = m.get("type", ""), (m.get("modifier") or "").replace("_", " "), s.get("name") or ""
-        onto = f" onto {name}" if name else ""
-        dist = float(s.get("distance") or 0)
-        if kind == "depart":
-            heading = _COMPASS[int(((m.get("bearing_after") or 0) + 22.5) // 45) % 8]
-            text = f"Head {heading}" + (f" on {name}" if name else "")
-        elif kind == "arrive":
-            out.append("Arrive" + (" on your " + mod if mod in ("left", "right") else ""))
+        said = _instruction(s, street)
+        if said is None:
+            continue
+        kind, text = said
+        if kind == "arrive":
+            out.append(text)
             break
-        elif kind in ("roundabout", "rotary", "roundabout turn"):
-            text = f"At the roundabout, take exit {m.get('exit') or 1}{onto}"
-        elif kind in ("new name", "continue") or mod == "straight":
-            if not name or name == street:
-                continue  # still the same road: nothing new to say
-            text = f"Continue{onto}"
-        elif kind == "end of road":
-            text = f"At the end of the road, turn {mod}{onto}"
-        elif kind in ("fork", "merge", "on ramp", "off ramp"):
-            text = f"Keep {mod or 'ahead'}{onto}"
-        else:
-            text = f"Turn {mod}{onto}" if mod else f"Go{onto}"
+        dist = float(s.get("distance") or 0)
         if dist >= 5:
             text += f" for {say_distance(dist)}"
-        street = name or street
+        street = s.get("name") or street
         out.append(text)
         if len(out) >= 14:
             out.append("Then follow the map the rest of the way")
             break
+    return out
+
+
+def _points(raw: list[dict]) -> list[Step]:
+    """Every instruction with where it happens (maneuver.location is [lon, lat]) and how far the next stretch is.
+    A step that says nothing new adds its distance to the one before. Not cut short: guidance needs them all."""
+    out: list[Step] = []
+    street = ""
+    for s in raw:
+        dist = float(s.get("distance") or 0)
+        said = _instruction(s, street)
+        if said is None:
+            if out:
+                out[-1].distance_m += dist
+            continue
+        kind, say = said
+        loc = (s.get("maneuver") or {}).get("location") or []
+        lat, lon = (float(loc[1]), float(loc[0])) if len(loc) == 2 else (None, None)
+        name = s.get("name") or ""
+        arrive = kind == "arrive"
+        text = say + (f" for {say_distance(dist)}" if dist >= 5 and not arrive else "")
+        out.append(Step(text, say, lat, lon, 0.0 if arrive else dist, kind, name))
+        if arrive:
+            break
+        street = name or street
     return out
 
 
@@ -591,7 +639,17 @@ class SamplePlaces:
         return Spot(text.title(), base_lat + (h[0] - 128) / 9000, base_lon + (h[1] - 128) / 9000, kind="place", sample=True)
 
     def get_route(self, from_lat: float, from_lon: float, to_lat: float, to_lon: float, mode: str = "foot") -> Route:
+        """An L-shaped walk: along Powell Street to the destination's latitude, then along Post Street to it."""
         d = meters(from_lat, from_lon, to_lat, to_lon) * 1.3
         speed = {"foot": WALK_M_PER_MIN, "bike": 250.0, "car": 450.0}.get(mode, WALK_M_PER_MIN)
-        steps = [f"Head north on Powell Street for {say_distance(d * .3)}", f"Turn right onto Post Street for {say_distance(d * .7)}", "Arrive"]
-        return Route(mode if mode in ROUTERS else "foot", d, d / speed, steps, sample=True)
+        first, second = meters(from_lat, from_lon, to_lat, from_lon), meters(to_lat, from_lon, to_lat, to_lon)
+        north, east = to_lat >= from_lat, to_lon >= from_lon
+        side = "right" if north == east else "left"  # heading north, east is on your right; heading south, on your left
+        points = [
+            Step(f"Head {'north' if north else 'south'} on Powell Street for {say_distance(first)}",
+                 f"Head {'north' if north else 'south'} on Powell Street", from_lat, from_lon, first, "depart", "Powell Street"),
+            Step(f"Turn {side} onto Post Street for {say_distance(second)}", f"Turn {side} onto Post Street",
+                 to_lat, from_lon, second, "turn", "Post Street"),
+            Step("Arrive", "Arrive", to_lat, to_lon, 0.0, "arrive"),
+        ]
+        return Route(mode if mode in ROUTERS else "foot", d, d / speed, [p.text for p in points], sample=True, points=points)

@@ -1893,6 +1893,21 @@
     } catch (_) {}
   })();
 
+  // ---- walking guidance (guide.js): Guide me on walking directions, spoken turn by turn ---------
+  (() => {
+    const s = document.createElement("script");
+    s.src = "/guide.js" + QUERY;
+    s.onload = () => window.ChiefGuide && ChiefGuide.init({
+      api, speak: (t) => say(t, "happy"),
+      ensureLocation: async () => {  // the same consent card as everywhere else, before the browser is asked
+        if (haveLocation) return true;
+        if (!(await askConsent())) return false;
+        try { await shareLocation(); return true; } catch (e) { say(e.message, "worried"); return false; }
+      },
+    });
+    document.head.append(s);
+  })();
+
   // Places, turns and links that came with an answer. Every link opens a page: nothing is booked or paid here.
   function linkRow(links, main) {
     const row = el("div", "links");
@@ -1917,6 +1932,7 @@
     }));
     $("aroundLinks").replaceChildren(...(links.length ? linkRow(links, true).childNodes : []));
     $("aroundNote").textContent = (p.sources || []).join(" · ");
+    if (window.ChiefGuide) ChiefGuide.offer(p, panel);
     panel.hidden = false;
     return true;
   }
@@ -1947,6 +1963,7 @@
       } else {
         say(out.say, out.proposal && out.proposal.actions.length ? "waiting" : "happy");
       }
+      if (window.ChiefGuide) ChiefGuide.handle(out.proposal);  // "guide me there" / "stop guiding"
       setTimeout(() => { if ($("chief").dataset.mood === "happy") setMood("idle"); }, 2400);
     } catch (e) {
       asking = false;
