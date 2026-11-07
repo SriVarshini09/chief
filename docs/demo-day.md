@@ -19,7 +19,7 @@ The script itself is in [demo-script.md](demo-script.md). This page is about kee
 - After a failure Chief stops waiting on the network for 30 seconds (the "breaker"), so five reads in a row do not each burn six seconds. It probes the live service again after that.
 - Anything answered from the cache is **never presented as live**: the activity event carries `detail.cached = true` (plus `cached_at`, `cache_match`, and the reason), its title ends in "(cached)", and the Stage shows a small `cached` tag on the panel.
 - `cache_match` says how close the answer is: `exact` (same call), `derived` (rebuilt from recorded data, e.g. the calendar for a different time window), `similar` (a web search worded almost the same).
-- A **write is never replayed or faked**. If you say "do it" while the network is down, the activity stream shows `... failed: ... It was NOT done and was not faked.` and Chief says "That didn't go through". A write that times out may still complete later, so the error tells you to check before trying again.
+- A **write is never replayed or faked**. If you say "do it" while the network is down, the activity stream shows `... failed: ... It was NOT done and was not faked.` and Chief says "I'm sorry, that didn't go through". A write that times out may still complete later, so the error tells you to check before trying again.
 - A read with no cached answer at all fails with both reasons, so the stream says what to fix (`python -m chief record-demo`).
 
 ### How `demo-offline` behaves
@@ -66,7 +66,7 @@ Run `python -m chief doctor` (add `--live` for one tiny call each to Parallel, t
 
 Stay calm; the system is built for this. Decide by what you see on the Stage:
 
-1. **Reads still work, results show a `cached` tag, "Do it" says "That didn't go through".** You are in `demo` failover with live down. Tell the room: "The network is down, so Chief fell back to what it recorded earlier, and it is labelled. It will not fake a change." Keep going through the read-only beats (inbox, prep, trip). For the writes, switch to offline below.
+1. **Reads still work, results show a `cached` tag, "Do it" says "I'm sorry, that didn't go through".** You are in `demo` failover with live down. Tell the room: "The network is down, so Chief fell back to what it recorded earlier, and it is labelled. It will not fake a change." Keep going through the read-only beats (inbox, prep, trip). For the writes, switch to offline below.
 2. **The phone page stops responding.** The phone reaches the laptop through the tunnel, so no Wi-Fi means no phone. Type the phrases into the page open on the laptop instead (`http://localhost:8765/?token=...`, printed at start-up). The Stage keeps working because it talks to the laptop.
 3. **You want the writes to show up anyway.** Restart in offline mode: Ctrl+C, then `python -m chief demo --mode demo-offline --no-tunnel`, reopen the Stage, and drive from the laptop. Reads are cached, writes are simulated and tagged. Say it plainly: "I'm replaying recorded results and the changes are simulated; nothing real is happening."
 4. **Speech-to-text is down.** Type into the box on the page; it takes the same path as voice.

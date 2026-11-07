@@ -32,7 +32,7 @@ dev = ["pytest>=8", "httpx>=0.27", "fastapi>=0.110", "python-multipart>=0.0.18"]
 include = ["chief*"]
 
 [tool.setuptools.package-data]
-"chief.web" = ["index.html", "stage.html", "dashboard.html", "world.js", "pet.js", "icons/*.png", "footage/*"]
+"chief.web" = ["index.html", "stage.html", "dashboard.html", "welcome.html", "signin.html", "setup.html", "front.css", "world.js", "pet.js", "icons/*.png", "footage/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

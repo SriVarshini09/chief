@@ -90,14 +90,14 @@ def _names(items: list[dict]) -> str:
 def opening(hour: float, meetings: list[dict], mail: dict, days: list[dict], missing: list[str]) -> str:
     """The first thing Chief says: built in plain code from what it read, with no model involved."""
     hello = "Good morning" if hour < 12 else "Good afternoon" if hour < 17 else "Good evening"
-    lines = [f"Hi! {hello}."]
+    lines = [f"Hi, {hello.lower()}! I'm glad you're here."]
     if "calendar" in missing:
-        lines.append("I can't reach your calendar right now.")
+        lines.append("I'm sorry, I can't reach your calendar right now.")
     elif meetings:
         first = meetings[0]
         ahead = [m for m in meetings if m["end"] > hour]
         if not ahead:  # evening: don't greet with a meeting that already happened
-            lines.append(f"Your {_plural(len(meetings), 'meeting')} for today {'is' if len(meetings) == 1 else 'are'} done.")
+            lines.append(f"Your {_plural(len(meetings), 'meeting')} for today {'is' if len(meetings) == 1 else 'are'} done. Well done.")
         elif ahead[0] is not first:
             lines.append(f"You've got {_plural(len(ahead), 'meeting')} left today. Next is {ahead[0]['title']} at {ahead[0]['clock']}.")
         else:
@@ -105,7 +105,7 @@ def opening(hour: float, meetings: list[dict], mail: dict, days: list[dict], mis
     else:
         lines.append("Your calendar's clear today.")
     if "mail" in missing:
-        lines.append("I can't reach your email right now.")
+        lines.append("I'm sorry, I can't reach your email right now.")
     elif mail["reply"]:
         lines.append(f"{_names(mail['reply'])} {'is' if len(mail['reply']) == 1 else 'are'} waiting to hear from you.")
     else:
@@ -116,7 +116,7 @@ def opening(hour: float, meetings: list[dict], mail: dict, days: list[dict], mis
     if heavy and len(lines) < 4:
         lines.append(f"{heavy['full']} looks heavy, so I'm keeping an eye on it.")
     if len(lines) < 4:
-        lines.append("I'll be right here if you need me.")
+        lines.append("I'll be right here whenever you need me.")
     return " ".join(lines)
 
 

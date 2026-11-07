@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#6fbde6">
+<meta name="description" content="Chief is a personal agent for your calendar, inbox, reminders and places. It asks before anything changes.">
+<title>Chief - your calm personal agent</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 30 L12 6 L26 18 Q32 16 38 18 L52 6 L54 30 Q56 54 32 56 Q8 54 10 30Z' fill='%23fbfaf6' stroke='%232a3b30' stroke-width='3'/%3E%3Ccircle cx='23' cy='35' r='3.6' fill='%23222'/%3E%3Ccircle cx='41' cy='35' r='3.6' fill='%23222'/%3E%3Cpath d='M27 43 q2.5 3 5 0 q2.5 3 5 0' fill='none' stroke='%23222' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/front.css">
+</head>
+<body>
+<div class="sun" aria-hidden="true"></div>
+<div class="cloud one" aria-hidden="true"></div>
+<div class="cloud two" aria-hidden="true"></div>
+<div class="meadow" aria-hidden="true">
+  <svg viewBox="0 0 1200 400" preserveAspectRatio="none">
+    <path d="M0 170 C220 90 420 150 640 120 S1000 70 1200 130 V400 H0Z" fill="#a8d0b0"/>
+    <path d="M0 240 C260 180 480 250 720 210 S1040 170 1200 220 V400 H0Z" fill="#7fb78b"/>
+    <path d="M0 310 C300 270 560 330 820 290 S1100 280 1200 300 V400 H0Z" fill="#569a68"/>
+    <g fill="#fbf6ea"><circle cx="140" cy="330" r="5"/><circle cx="420" cy="350" r="4"/><circle cx="910" cy="320" r="5"/><circle cx="1080" cy="345" r="4"/></g>
+    <g fill="#e9553a"><circle cx="260" cy="345" r="5"/><circle cx="700" cy="336" r="4"/><circle cx="1010" cy="360" r="5"/></g>
+    <g fill="#f3b73c"><circle cx="560" cy="362" r="4"/><circle cx="830" cy="356" r="4"/></g>
+  </svg>
+</div>
+
+<main>
+  <header>
+    <a class="brand" href="/welcome" aria-label="Chief, home">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M10 30 L12 6 L26 18 Q32 16 38 18 L52 6 L54 30 Q56 54 32 56 Q8 54 10 30Z" fill="#fbfaf6" stroke="#2a3b30" stroke-width="3"/><circle cx="23" cy="35" r="3.6" fill="#222"/><circle cx="41" cy="35" r="3.6" fill="#222"/><path d="M27 43 q2.5 3 5 0 q2.5 3 5 0" fill="none" stroke="#222" stroke-width="2.2" stroke-linecap="round"/></svg>
+      Chief
+    </a>
+    <nav class="links" aria-label="Account">
+      <a id="topSignIn" href="/signin">Sign in</a>
+    </nav>
+  </header>
+
+  <section class="hero" aria-labelledby="title">
+    <svg class="kitten" viewBox="0 0 64 64" aria-hidden="true"><path d="M10 30 L12 6 L26 18 Q32 16 38 18 L52 6 L54 30 Q56 54 32 56 Q8 54 10 30Z" fill="#fbfaf6" stroke="#2a3b30" stroke-width="3"/><path d="M15 14 L22 21 L15 26Z M49 14 L42 21 L49 26Z" fill="#f4b8c4"/><circle cx="23" cy="35" r="3.6" fill="#222"/><circle cx="41" cy="35" r="3.6" fill="#222"/><path d="M27 43 q2.5 3 5 0 q2.5 3 5 0" fill="none" stroke="#222" stroke-width="2.2" stroke-linecap="round"/></svg>
+    <h1 id="title">A calm helper for your day.</h1>
+    <p class="lead">Chief looks after your calendar and inbox, reminds you of what matters, and finds places and directions. It gets things ready, then <b>asks you before anything changes</b>.</p>
+    <div class="row">
+      <a class="btn primary" id="start" href="/signin?start=1">Get started</a>
+      <a class="btn ghost" id="signIn" href="/signin">Sign in</a>
+    </div>
+    <p class="small soft" id="already" hidden>You're signed in. <a href="/setup">Connect your accounts</a></p>
+  </section>
+
+  <section aria-labelledby="what" class="grid three">
+    <h2 id="what" class="sr">What Chief does</h2>
+    <article class="panel feature">
+      <h3><span class="dot" aria-hidden="true">&#128197;</span> Calendar</h3>
+      <p class="soft">Spots a crowded day, a clash or a meeting with no room to breathe, and suggests a fix.</p>
+    </article>
+    <article class="panel feature">
+      <h3><span class="dot" aria-hidden="true">&#9993;&#65039;</span> Inbox</h3>
+      <p class="soft">Reads Gmail for what needs you, and drafts replies you can read before anything is sent.</p>
+    </article>
+    <article class="panel feature">
+      <h3><span class="dot" aria-hidden="true">&#9200;</span> Reminders</h3>
+      <p class="soft">A morning brief and gentle check-ins, on the web page or on Telegram.</p>
+    </article>
+    <article class="panel feature">
+      <h3><span class="dot" aria-hidden="true">&#128205;</span> Places and directions</h3>
+      <p class="soft">Finds what's near you and how to get there, using your location only if you say yes.</p>
+    </article>
+    <article class="panel feature">
+      <h3><span class="dot" aria-hidden="true">&#127860;</span> Booking prep</h3>
+      <p class="soft">Gets a table or a trip ready with the right links and details. You do the booking.</p>
+    </article>
+    <article class="panel feature">
+      <h3><span class="dot" aria-hidden="true">&#9989;</span> Asks first</h3>
+      <p class="soft">Nothing is sent, booked, moved or paid until you tap Approve. Recent changes can be undone.</p>
+    </article>
+  </section>
+
+  <section class="panel" style="margin-top:14px" aria-labelledby="how">
+    <h2 id="how">Getting set up takes a minute</h2>
+    <ol class="steps">
+      <li>Create your account: your name, email and a password.</li>
+      <li>Connect Google so Chief can read Gmail and Calendar.</li>
+      <li>Optional: connect Telegram for the morning brief, and share your location for places nearby.</li>
+    </ol>
+  </section>
+
+  <footer>Chief is open source. <a href="https://github.com/SriVarshini09/chief" rel="noopener">See the code</a>.</footer>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  fetch("/signin/state", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((s) => {
+    if (!s) return;
+    if (s.signed_in) {
+      const start = document.getElementById("start");
+      start.textContent = "Open your garden";
+      start.href = "/dashboard";
+      document.getElementById("signIn").hidden = true;
+      document.getElementById("topSignIn").textContent = "Setup";
+      document.getElementById("topSignIn").href = "/setup";
+      document.getElementById("already").hidden = false;
+    } else if (s.owner) {
+      document.getElementById("start").href = "/signin";
+    }
+  }).catch(() => {});
+})();
+</script>
+</body>
+</html>

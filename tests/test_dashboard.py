@@ -43,7 +43,7 @@ def test_the_snapshot_shows_the_real_day(rt):
 
 def test_chief_speaks_first_from_the_real_day(rt):
     say = snapshot(rt)["say"]
-    assert say.startswith("Hi! Good morning. You've got 3 meetings today, starting with Standup at 10:00 AM.")
+    assert say.startswith("Hi, good morning! I'm glad you're here. You've got 3 meetings today, starting with Standup at 10:00 AM.")
     assert "Sam and Dana are waiting to hear from you." in say
     assert "I ignored 1 email that tried to give me orders." in say
 
@@ -59,7 +59,7 @@ def test_chief_says_so_when_it_cannot_see_something(rt, tools):
 def test_a_quiet_day_sounds_quiet():
     mail = {"reply": [], "deadline": [], "fyi": 4, "flagged": 0}
     say = opening(14.5, [], mail, [], [])
-    assert say == "Hi! Good afternoon. Your calendar's clear today. And nothing in your inbox needs you. I'll be right here if you need me."
+    assert say == "Hi, good afternoon! I'm glad you're here. Your calendar's clear today. And nothing in your inbox needs you. I'll be right here whenever you need me."
 
 
 def test_a_heavy_day_ahead_is_mentioned():

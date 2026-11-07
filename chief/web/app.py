@@ -18,20 +18,24 @@ from urllib.parse import quote
 
 import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
+from chief import guide as walking_guide
 from chief.dashboard import snapshot
-from chief.gate import results_text
+from chief.gate import SKIPPED, results_text
 from chief.intent import handle_utterance
 from chief.models import Proposal
 from chief.runtime import Runtime
+from chief.web.tts import MAX_TTS_CHARS, OpenAISpeaker, Speaker, mood_of
 
 PAGE = Path(__file__).parent / "index.html"
 STAGE_PAGE = Path(__file__).parent / "stage.html"
 DASHBOARD_PAGE = Path(__file__).parent / "dashboard.html"
 WORLD_SCRIPT = Path(__file__).parent / "world.js"
 PET_SCRIPT = Path(__file__).parent / "pet.js"
+GUIDE_SCRIPT = Path(__file__).parent / "guide.js"
+VOICE_SCRIPT = Path(__file__).parent / "voice.js"
 FOOTAGE = Path(__file__).parent / "footage"
 OWN_PICTURE = "background.jpg"
 FOOTAGE_FILES = {
@@ -126,10 +130,11 @@ class WebState:
         self.seq = 0  # bumps on every new reply so the page can tell a fresh one from a repeat
 
 
-def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) -> FastAPI:
+def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None, speaker: Speaker | None = None) -> FastAPI:
     if not token:
         raise ValueError("CHIEF_WEB_TOKEN is required: this page can approve actions on your accounts")
     stt = transcriber if transcriber is not None else WhisperTranscriber.from_env()
+    tts = speaker if speaker is not None else OpenAISpeaker.from_env()
     state = WebState()
     state.lock = rt.turn_lock
     app = FastAPI(title="Chief", docs_url=None, redoc_url=None, openapi_url=None)
@@ -229,6 +234,26 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
             raise HTTPException(502, f"transcription failed: {type(exc).__name__}") from exc
         return {"text": text}
 
+    @app.post("/tts", dependencies=auth)
+    async def text_to_speech(body: dict) -> Response:
+        """Chief's words as warm, natural speech. Only used when CHIEF_TTS_API_KEY is set; the page falls back
+        to the browser's voice on any error. The text is never logged and the audio is never kept."""
+        raw = body.get("text")
+        text = raw.strip() if isinstance(raw, str) else ""
+        if not text:
+            raise HTTPException(400, "text is required")
+        if len(text) > MAX_TTS_CHARS:
+            raise HTTPException(413, f"text is longer than {MAX_TTS_CHARS} characters")
+        if not getattr(tts, "enabled", False):
+            raise HTTPException(503, "the natural voice is not configured (set CHIEF_TTS_API_KEY)")
+        try:
+            audio = await run_in_threadpool(tts.speak, text, mood_of(body.get("mood")))
+        except Exception as exc:
+            raise HTTPException(502, f"speech failed: {type(exc).__name__}") from exc
+        if not audio:
+            raise HTTPException(502, "speech failed: no audio")
+        return Response(audio, media_type=getattr(tts, "media_type", "audio/mpeg"), headers={"Cache-Control": "no-store"})
+
     @app.post("/ask", dependencies=auth)
     def ask(body: dict) -> dict:
         raw = body.get("text")
@@ -262,7 +287,7 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
                 say, steps = results_text(results), ["Applying changes", "Failed" if failed else "Done"]
             else:
                 rt.gate.skip(proposal_id)
-                results, say, steps = [], "Okay, skipped.", ["Skipped"]
+                results, say, steps = [], SKIPPED, ["Skipped"]
             reply(say, steps)
             return {"say": say, "steps": steps, "results": results}
 
@@ -299,6 +324,36 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
         rt.where.clear()
         return {"ok": True}
 
+    # ---- walking guidance: turn by turn from your live location (chief/guide.py), memory only --------
+
+    @app.get("/guide.js", dependencies=auth)
+    def guide_script() -> FileResponse:
+        return FileResponse(GUIDE_SCRIPT, media_type="text/javascript", headers={"Cache-Control": "no-store"})
+
+    def _position(body: dict) -> tuple[float, float, float | None]:
+        try:
+            lat, lon = float(body.get("lat")), float(body.get("lon"))
+            rt.where.set(lat, lon, label="", source="browser", now=rt.now())  # guiding also keeps "Around you" current
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, "lat and lon must be numbers on Earth") from exc
+        acc = body.get("accuracy")
+        return lat, lon, float(acc) if isinstance(acc, (int, float)) and not isinstance(acc, bool) else None
+
+    @app.post("/guide/start", dependencies=auth)
+    def guide_start(body: dict) -> dict:
+        lat, lon, acc = _position(body)
+        to = body.get("to") if isinstance(body.get("to"), dict) else None
+        return walking_guide.start(rt.where, rt.tools, lat, lon, to, acc)
+
+    @app.post("/guide/tick", dependencies=auth)
+    def guide_tick(body: dict) -> dict:
+        lat, lon, acc = _position(body)
+        return walking_guide.tick(rt.where, rt.tools, lat, lon, acc)
+
+    @app.post("/guide/stop", dependencies=auth)
+    def guide_stop() -> dict:
+        return walking_guide.stop(rt.where)
+
     @app.get("/status", dependencies=auth)
     def status() -> dict:
         return {
@@ -311,6 +366,7 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
             "steps": state.steps,
             "pending": [proposal_json(p, rt) for p in list(rt.gate.pending.values())],
             "stt": getattr(stt, "enabled", True),
+            "tts": bool(getattr(tts, "enabled", False)),  # the natural voice; otherwise the browser's own
             "location": rt.where.here(rt.now()) is not None,
         }
 
@@ -327,6 +383,10 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
     @app.get("/dashboard/pet.js", dependencies=auth)
     def dashboard_pet() -> FileResponse:
         return FileResponse(PET_SCRIPT, media_type="text/javascript", headers={"Cache-Control": "no-store"})
+
+    @app.get("/dashboard/voice.js", dependencies=auth)
+    def dashboard_voice() -> FileResponse:
+        return FileResponse(VOICE_SCRIPT, media_type="text/javascript", headers={"Cache-Control": "no-store"})
 
     @app.get("/dashboard/footage/{name}", dependencies=auth)
     def dashboard_footage(name: str) -> FileResponse:
@@ -364,6 +424,10 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
         pins the view to a particular day, e.g. the one Chief is about to change."""
         return stage_days(rt, day=day, event=event)
 
+    # ---- the front door: /welcome, /signin, /session, /setup (chief/web/front_door.py) ---------------
+    from chief.web.front_door import install_front_door
+
+    install_front_door(app, rt, token, require_token)
     return app
 
 

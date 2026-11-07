@@ -34,21 +34,36 @@ class Held:
     timer: Any = None
 
 
+SKIPPED = "No problem, I've skipped that one."
+
+
+def changes(count: int) -> str:
+    """'1 change', '4 changes': said the way a person would say it."""
+    return "1 change" if count == 1 else f"{count} changes"
+
+
+def made(count: int) -> str:
+    """How Chief tells you an approval went through, with a little thanks for checking it first."""
+    if count == 0:
+        return "All done. Nothing needed changing."
+    return f"All done. I made {changes(count)}. Thanks for looking it over first."
+
+
 def results_text(results: list[dict]) -> str:
     """What to tell the person after an approval."""
     errors = [r for r in results if "error" in r]
     done = [r for r in results if "error" not in r and not (isinstance(r.get("result"), dict) and r["result"].get("held"))]
     if errors:
-        rest = f" {len(done)} change(s) went through, and the rest is waiting for you." if done else " It is waiting for you to retry or skip."
-        return f"That didn't go through: {errors[0]['error']}.{rest}"
+        rest = f" {changes(len(done))} went through, and the rest is waiting for you." if done else " It's waiting for you to retry or skip."
+        return f"I'm sorry, that didn't go through: {errors[0]['error']}.{rest}"
     if len(done) < len(results):
         seconds = next(r["result"]["seconds"] for r in results if r not in done)
         return f"Sending in {seconds:g} seconds. You can still stop it."
-    return f"Done. {len(results)} change(s) made."
+    return made(len(results))
 
 
 # Answers about places say where you are ("Sakura, 120 m away"), so they are never written to the state folder.
-WHERE_SKILLS = {"nearby", "directions", "booking"}
+WHERE_SKILLS = {"nearby", "directions", "booking", "guide"}
 
 
 def _saved(proposal) -> str:
@@ -286,8 +301,8 @@ class ApprovalGate:
                 self.memory.log("undo_failed", tool=step.tool, error=str(exc))
         self.memory.log("undone", steps=len(steps), failed=failed)
         if failed:
-            return f"I reversed {len(steps) - failed} of {len(steps)} changes. Please check your calendar."
-        return f"Undone. {len(steps)} change(s) reversed."
+            return f"I'm sorry, I could only reverse {len(steps) - failed} of {len(steps)} changes. Please check your calendar."
+        return f"Undone. I've reversed {changes(len(steps))}, so it's back the way it was."
 
     def skip(self, proposal_id: str) -> None:
         with self._lock:

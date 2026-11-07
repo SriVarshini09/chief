@@ -290,6 +290,8 @@
   .consent p { margin: 0; font-size: 15px; line-height: 1.45; }
   .consent b { display: block; font: 600 18px/1.3 var(--serif); margin-bottom: 2px; }
   .consent .row { grid-column: 2; }
+  #voiceBox select { flex: 1; min-width: 0; min-height: 42px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 12px; background: var(--paper-solid); color: var(--ink); font: 15px var(--sans); }
+  .ask .round#voiceMore { padding: 0 9px; }
 
   /* inbox */
   .mail { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -359,6 +361,7 @@
   <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/></symbol>
   <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></symbol>
+  <symbol id="i-tune" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/></symbol>
 </svg>
 
@@ -383,6 +386,8 @@
       <span class="tag" id="mode">connecting</span>
       <a id="phone" href="/">Talk</a>
       <a id="stage" href="/stage">Stage</a>
+      <a id="setup" href="/setup">Setup</a>
+      <button type="button" class="tag tourbtn" id="signOut">Sign out</button>
     </div>
   </header>
 
@@ -478,6 +483,12 @@
     <p id="consentText"><b>Can I use your live location?</b> I'll use it to find places and directions near you, keep it only while Chief is running, and you can switch it off with the pin.</p>
     <div class="row"><button type="button" class="do" id="consentYes">Allow</button><button type="button" class="no" id="consentNo">Not now</button></div>
   </div>
+  <div class="consent" id="voiceBox" role="dialog" aria-labelledby="voiceBoxTitle" hidden>
+    <svg class="ico" aria-hidden="true"><use href="#i-speaker"/></svg>
+    <p><b id="voiceBoxTitle">Chief's voice</b><label for="voicePick">Pick the voice that sounds nicest to you. I'll remember it on this device.</label></p>
+    <div class="row"><select id="voicePick"></select></div>
+    <div class="row"><button type="button" class="do" id="voiceTest">Test voice</button><button type="button" class="no" id="voiceClose">Done</button></div>
+  </div>
   <button id="undo" type="button" hidden></button>
   <form id="askForm">
     <button type="button" class="round" id="mic" title="Talk to Chief" aria-label="Talk to Chief" hidden><svg class="ico" aria-hidden="true"><use href="#i-mic"/></svg></button>
@@ -485,12 +496,27 @@
     <button type="submit" aria-label="Ask"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg> Ask</button>
     <button type="button" class="round" id="locBtn" title="Share your location with Chief" aria-label="Share your location" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg></button>
     <button type="button" class="round" id="voice" title="Turn Chief's voice on or off" aria-label="Chief's voice" aria-pressed="true"></button>
+    <button type="button" class="round" id="voiceMore" title="Choose Chief's voice" aria-label="Choose Chief's voice" aria-haspopup="dialog" aria-expanded="false"><svg class="ico" aria-hidden="true"><use href="#i-tune"/></svg></button>
   </form>
 </div>
 
 <canvas id="air" aria-hidden="true"></canvas>
 <div class="pointer" id="pointer" hidden aria-hidden="true"><svg viewBox="0 0 40 48"><path d="M20 46L4 24h10V2h12v22h10z"/></svg></div>
 
+<script>
+// Signed in with a password, so the address has no token: fetch it once through the cookie (Chief's own
+// pages only, see chief/web/front_door.py) and keep it for this tab, like a token link would.
+(() => {
+  try {
+    if (new URLSearchParams(location.search).get("token") || sessionStorage.getItem("chief-token")) return;
+    const x = new XMLHttpRequest();
+    x.open("GET", "/session", false);  // synchronous on purpose: the script below reads the token as it starts
+    x.setRequestHeader("X-Chief-Session", "1");
+    x.send();
+    if (x.status === 200) sessionStorage.setItem("chief-token", JSON.parse(x.responseText).token || "");
+  } catch (_) {}
+})();
+</script>
 <script>
 (() => {
   "use strict";
@@ -516,6 +542,12 @@
 
   $("phone").href = "/" + QUERY;
   $("stage").href = "/stage" + QUERY;
+  $("setup").href = "/setup" + QUERY;
+  $("signOut").addEventListener("click", async () => {  // forget the token in this tab, clear the cookie, back to the welcome page
+    try { sessionStorage.removeItem("chief-token"); } catch (_) {}
+    try { await fetch("/signout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); } catch (_) {}
+    location.assign("/welcome");
+  });
 
   async function api(path, opts = {}) {
     const res = await fetch(path, { ...opts, headers: { "X-Chief-Token": TOKEN, ...(opts.headers || {}) } });
@@ -1519,8 +1551,9 @@
     $("voice").setAttribute("aria-pressed", String(voiceOn));
   }
 
-  // The most natural voice this device has. Neural voices sound far better than the old system ones.
+  // The most natural voice this device has, or the one you picked. Neural voices sound far better than the old system ones.
   function friendlyVoice() {
+    if (window.ChiefVoice) return ChiefVoice.browserVoice();
     const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
     return voices.find((v) => /(aria|jenny|ava|emma|sonia|libby).*(natural|neural|online)/i.test(v.name))
       || voices.find((v) => /natural|neural|online/i.test(v.name))
@@ -1534,6 +1567,7 @@
   // them, and there is a short breath before the next sentence.
   function saySentence(part, run, reveal, done) {
     const words = [...part.matchAll(/\S+\s*/g)];
+    const tone = window.ChiefVoice ? ChiefVoice.tone($("chief").dataset.mood) : { rate: .97, pitch: 1.1 };  // warmer and slower when worried, brighter when happy
     let next = 0;
     const show = (index) => {
       if (run !== speechRun) return;
@@ -1546,7 +1580,7 @@
       if (run !== speechRun || index >= words.length) return;
       show(index);
       const word = words[index][0].trim();
-      const wait = 90 + word.length * 58 + (/[,;:]$/.test(word) ? 210 : 0);
+      const wait = (90 + word.length * 58 + (/[,;:]$/.test(word) ? 210 : 0)) / tone.rate;
       if (index + 1 < words.length) speechTimer = setTimeout(() => paced(index + 1), wait);
       else speechTimer = setTimeout(() => { if (!mayTalk()) done(); }, wait);
     };
@@ -1554,8 +1588,8 @@
 
     const line = new SpeechSynthesisUtterance(part.trim());
     const chosen = friendlyVoice();
-    if (chosen) line.voice = chosen;
-    line.pitch = 1.1; line.rate = .97;
+    if (chosen) { line.voice = chosen; line.lang = chosen.lang; }
+    line.pitch = tone.pitch; line.rate = tone.rate;
     let heardWords = false;
     line.onboundary = (e) => {
       if (e.name && e.name !== "word") return;
@@ -1569,6 +1603,7 @@
   }
 
   function firstTouch() {
+    if (window.ChiefVoice) ChiefVoice.unlock();                                        // lets the natural voice play
     if (canSpeak) return;
     canSpeak = true;
     if (!heardOnce && shown) { const again = shown; heardOnce = true; shown = ""; speak(again); }
@@ -1579,8 +1614,32 @@
   $("voice").addEventListener("click", () => {
     voiceOn = !voiceOn;
     try { localStorage.setItem("chief-voice", voiceOn ? "on" : "off"); } catch (_) {}
-    if (!voiceOn && "speechSynthesis" in window) speechSynthesis.cancel();
+    if (!voiceOn) hush();
     showVoice();
+  });
+
+  // Stop talking now, whichever voice is speaking.
+  function hush() {
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    if (window.ChiefVoice) ChiefVoice.stop();
+  }
+
+  // Choosing a voice: a small box beside the voice button, remembered on this device.
+  function showVoiceBox(open) {
+    $("voiceBox").hidden = !open;
+    $("voiceMore").setAttribute("aria-expanded", String(open));
+  }
+  $("voiceMore").addEventListener("click", () => {
+    const open = $("voiceBox").hidden;
+    showVoiceBox(open);
+    if (open) $("voicePick").focus();
+  });
+  $("voiceClose").addEventListener("click", () => showVoiceBox(false));
+  $("voiceTest").addEventListener("click", () => {
+    canSpeak = true;
+    if (!voiceOn) { voiceOn = true; try { localStorage.setItem("chief-voice", "on"); } catch (_) {} showVoice(); }
+    shown = "";
+    say(window.ChiefVoice ? ChiefVoice.TEST_LINE : "Hi, it's me, Chief. This is how I'll sound.", "happy");
   });
 
   // Talking to Chief. The browser's own speech recognition does the listening, so it only appears
@@ -1607,7 +1666,7 @@
       listening = ear;
       $("mic").classList.add("on");
       $("mic").setAttribute("aria-label", "Listening");
-      if ("speechSynthesis" in window) speechSynthesis.cancel();
+      hush();
       if (pet) { pet.wake(); pet.mood("waiting"); }
     });
   }
@@ -1619,7 +1678,7 @@
     shown = text;
     const box = $("speech"), run = ++speechRun;
     clearTimeout(speechTimer);
-    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    hush();
     if (CALM) { box.textContent = text; return; }
     if (canSpeak) heardOnce = true;
 
@@ -1645,10 +1704,35 @@
       if (pet) pet.sentence();
       saySentence(part, run, (upTo) => reveal(from + upTo), () => {
         if (pet) pet.pauseSpeech();
-        speechTimer = setTimeout(next, /[.!?]/.test(part) ? 340 : 200);
+        speechTimer = setTimeout(next, window.ChiefVoice ? ChiefVoice.pause($("chief").dataset.mood, part) : /[.!?]/.test(part) ? 340 : 200);
       });
     };
-    next();
+    if (window.ChiefVoice && mayTalk() && ChiefVoice.useNatural() && text.length <= ChiefVoice.MAX) naturalSpeech(text, run, reveal, then, next);
+    else next();
+  }
+
+  // The natural voice says the whole reply in one go. The mouth follows how loud it is, the words appear
+  // as it goes, and if anything goes wrong the browser's own voice says it instead.
+  function naturalSpeech(text, run, reveal, then, fallback) {
+    let shownUpTo = 0;
+    ChiefVoice.play(text, $("chief").dataset.mood, {
+      token: TOKEN,
+      onStart() { if (pet && run === speechRun) pet.sentence(); },
+      onLevel(level) { if (pet && pet.loud && run === speechRun) pet.loud(level); },
+      onProgress(share) {
+        if (run !== speechRun) return;
+        const space = text.indexOf(" ", Math.floor(text.length * share)), upTo = space < 0 ? text.length : space;
+        if (upTo <= shownUpTo) return;
+        if (pet && /[.!?]\s/.test(text.slice(shownUpTo, upTo + 1))) pet.sentence();      // a nod at each new sentence
+        shownUpTo = upTo;
+        reveal(upTo);
+      },
+    }).then(() => {
+      if (run !== speechRun) return;
+      reveal(text.length);
+      if (pet) { pet.pauseSpeech(); pet.talk(false); }
+      if (then) then();
+    }, () => { if (run === speechRun) fallback(); });
   }
 
   // A first visit gets the tour once Chief has said hello, whichever arrives first: the kitten or the data.
@@ -1664,7 +1748,7 @@
     $("heard").hidden = true;
     if (pendingCount) {
       setMood("waiting");
-      speak(pendingCount === 1 ? "I have something for you to look at. Nothing happens until you say so." : `I have ${pendingCount} things for you to look at. Nothing happens until you say so.`);
+      speak(pendingCount === 1 ? "I have something for you to look at, whenever you're ready. Nothing happens until you say so." : `I have ${pendingCount} things for you to look at, whenever you're ready. Nothing happens until you say so.`);
     } else {
       setMood("idle");
       if (opening && opening !== greeted) { greeted = opening; speak(opening, afterGreeting); }
@@ -1798,6 +1882,7 @@
       const s = await api("/status");
       if (asking) working(s.steps.length ? s.steps[s.steps.length - 1] : "Thinking");
       if (haveLocation !== !!s.location) { haveLocation = !!s.location; showLocation(); }
+      if (window.ChiefVoice) ChiefVoice.setNatural(!!s.tts);
       undoMark = s.undo ? s.undo.mark : "";
       $("undo").hidden = !s.undo;
       if (s.undo) $("undo").replaceChildren(icon("undo"), " " + s.undo.label + (s.undo.seconds != null ? " (" + s.undo.seconds + "s)" : ""));
@@ -1893,6 +1978,21 @@
     } catch (_) {}
   })();
 
+  // ---- walking guidance (guide.js): Guide me on walking directions, spoken turn by turn ---------
+  (() => {
+    const s = document.createElement("script");
+    s.src = "/guide.js" + QUERY;
+    s.onload = () => window.ChiefGuide && ChiefGuide.init({
+      api, speak: (t) => say(t, "happy"),
+      ensureLocation: async () => {  // the same consent card as everywhere else, before the browser is asked
+        if (haveLocation) return true;
+        if (!(await askConsent())) return false;
+        try { await shareLocation(); return true; } catch (e) { say(e.message, "worried"); return false; }
+      },
+    });
+    document.head.append(s);
+  })();
+
   // Places, turns and links that came with an answer. Every link opens a page: nothing is booked or paid here.
   function linkRow(links, main) {
     const row = el("div", "links");
@@ -1917,6 +2017,7 @@
     }));
     $("aroundLinks").replaceChildren(...(links.length ? linkRow(links, true).childNodes : []));
     $("aroundNote").textContent = (p.sources || []).join(" · ");
+    if (window.ChiefGuide) ChiefGuide.offer(p, panel);
     panel.hidden = false;
     return true;
   }
@@ -1947,6 +2048,7 @@
       } else {
         say(out.say, out.proposal && out.proposal.actions.length ? "waiting" : "happy");
       }
+      if (window.ChiefGuide) ChiefGuide.handle(out.proposal);  // "guide me there" / "stop guiding"
       setTimeout(() => { if ($("chief").dataset.mood === "happy") setMood("idle"); }, 2400);
     } catch (e) {
       asking = false;
@@ -2174,10 +2276,10 @@
   }
 
   const TOUR = [
-    { el: () => $("todayPanel"), say: "This is your day. Each flower is a meeting, and the taller ones run longer." },
-    { el: () => $("waiting"), say: "When I want to change something for you, it waits here. Nothing happens until you tap Approve." },
+    { el: () => $("todayPanel"), say: "So, this is your day. Each flower is a meeting, and the taller ones run a little longer." },
+    { el: () => $("waiting"), say: "When I'd like to change something for you, it waits right here. Nothing happens until you tap Approve." },
     { el: () => $("inboxPanel"), say: "And these are the people waiting to hear from you." },
-    { el: () => document.querySelector(".ask"), point: () => $("text"), say: "You can ask me anything down here. Type it, or tap the mic and just talk." },
+    { el: () => document.querySelector(".ask"), point: () => $("text"), say: "Whenever you need me, just ask down here. Type it, or tap the mic and talk to me." },
   ];
 
   async function tour() {
@@ -2196,9 +2298,9 @@
     touring = false;
     $("skipTour").hidden = true;
     try { localStorage.setItem("chief-toured", "1"); } catch (_) {}
-    if (skipped && "speechSynthesis" in window) speechSynthesis.cancel();
+    if (skipped) hush();
     window.scrollTo({ top: 0, behavior: CALM ? "auto" : "smooth" });
-    backHome(skipped ? "" : "That's everything! Tap Tour any time to see it again.");
+    backHome(skipped ? "" : "That's everything. Thanks for letting me show you around! Tap Tour any time to see it again.");
   }
 
   function toured() { try { return localStorage.getItem("chief-toured") === "1"; } catch (_) { return true; } }
@@ -2273,6 +2375,8 @@
     $("footage").addEventListener("error", () => { if (footage) dropFootage(); });
     setTimeout(blink, 1800);
     showVoice();
+    if (window.ChiefVoice && "speechSynthesis" in window) ChiefVoice.picker($("voicePick"));
+    else $("voiceMore").hidden = true;
     if (window.ChiefPet) {
       document.body.dataset.pet = "1";                                              // it must be showing to have a size
       pet = params.has("noPet") ? null : window.ChiefPet.start($("pet"), {
@@ -2325,7 +2429,7 @@
     script.onload = script.onerror = next;
     document.head.append(script);
   };
-  load("world.js", () => load("pet.js", boot));
+  load("world.js", () => load("pet.js", () => load("voice.js", boot)));
 })();
 </script>
 </body>

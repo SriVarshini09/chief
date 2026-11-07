@@ -19,10 +19,10 @@ def test_the_story_says_the_right_things_in_order(rt):
     assert "draft reply to Sam" in reply["say"] and "Nothing is sent until you approve" in reply["say"]
     assert reply["proposal"].actions[0].tool == "send_email"
     assert "slept under 6 hours" in week["say"] and week["steps"][-1] == "Proposal ready: approve or skip"
-    assert do_it["say"].startswith("Done. 4 change(s) made.")
+    assert do_it["say"].startswith("All done. I made 4 changes.")
     assert prep["say"].startswith("Prep for Acme pricing review") and "Dana" in prep["say"] and not prep["proposal"].actions
     assert trip["say"].startswith("Caltrain to Palo Alto") and trip["proposal"].actions[0].tool == "create_event"
-    assert add_it["say"].startswith("Done. 1 change(s) made.")
+    assert add_it["say"].startswith("All done. I made 1 change.")
 
 
 def test_nothing_is_written_before_approval(rt, tools):

@@ -75,7 +75,7 @@ def test_ask_then_approve_through_the_gate(client, rt, tools):
     assert tools.calls == []  # nothing ran before approval
 
     done = client.post(f"/approve/{pid}", headers=H).json()
-    assert "change(s) made" in done["say"]
+    assert "All done. I made" in done["say"]
     assert tools.calls  # the write happened, via the gate
     status = client.get("/status", headers=H).json()
     assert status["pending"] == [] and status["steps"][-1] == "Done"
@@ -84,7 +84,7 @@ def test_ask_then_approve_through_the_gate(client, rt, tools):
 def test_skip_runs_nothing(client, rt, tools):
     pid = client.post("/ask", json={"text": "audit"}, headers=H).json()["proposal"]["id"]
     out = client.post(f"/skip/{pid}", headers=H).json()
-    assert out["say"] == "Okay, skipped." and tools.calls == []
+    assert out["say"] == "No problem, I've skipped that one." and tools.calls == []
     assert client.get("/status", headers=H).json()["pending"] == []
 
 
@@ -96,7 +96,7 @@ def test_unknown_proposal_is_404(client):
 def test_spoken_approval_goes_through_ask(client, tools):
     client.post("/ask", json={"text": "why am I so tired"}, headers=H)
     out = client.post("/ask", json={"text": "Do it."}, headers=H).json()
-    assert "change(s) made" in out["say"] and tools.calls
+    assert "All done. I made" in out["say"] and tools.calls
 
 
 def test_ask_rejects_empty_text(client):
