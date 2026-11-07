@@ -103,6 +103,20 @@
   .ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; flex: none; }
   .panel h2 { display: flex; align-items: center; gap: 8px; }
   .panel h2 .ico { width: 20px; height: 20px; color: var(--moss); }
+  .scenes { position: relative; }
+  .scene-menu {
+    position: absolute; right: 0; top: calc(100% + 8px); z-index: 50; width: 270px; padding: 6px; display: grid; gap: 2px;
+    background: var(--paper-solid); color: var(--ink); border: 1px solid var(--edge); border-radius: 16px; box-shadow: 0 18px 40px -16px rgba(10, 24, 16, .55);
+  }
+  .scene-menu[hidden] { display: none; }
+  .scene-menu button {
+    display: grid; gap: 1px; text-align: left; padding: 9px 12px 9px 30px; border: 0; border-radius: 11px; background: transparent; color: inherit; cursor: pointer; position: relative;
+  }
+  .scene-menu button:hover, .scene-menu button:focus-visible { background: color-mix(in srgb, var(--moss) 12%, transparent); }
+  .scene-menu b { font: 600 14px var(--sans); }
+  .scene-menu span { font-size: 12px; color: var(--soft); }
+  .scene-menu button[aria-checked="true"]::before { content: ""; position: absolute; left: 12px; top: 15px; width: 8px; height: 8px; border-radius: 50%; background: var(--moss); }
+  .scene-menu button[hidden] { display: none; }
   .tourbtn { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font: inherit; font-size: 13px; }
   .skip { position: relative; margin-top: 10px; padding: 6px 12px; border-radius: 99px; border: 1px solid rgba(31, 51, 39, .25); background: transparent; color: inherit; font: 600 13px var(--sans); cursor: pointer; }
   .skip[hidden] { display: none; }
@@ -316,6 +330,7 @@
   <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16.5 9.5"/></symbol>
   <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M4 7l8 6 8-6"/></symbol>
   <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/></symbol>
 </svg>
 
@@ -325,6 +340,17 @@
   <header>
     <div class="brand">Chief</div>
     <div class="links">
+      <div class="scenes">
+        <button type="button" class="tag tourbtn" id="sceneBtn" aria-haspopup="true" aria-expanded="false"><svg class="ico" aria-hidden="true"><use href="#i-image"/></svg> Scene</button>
+        <div class="scene-menu" id="sceneMenu" role="menu" hidden>
+          <button type="button" role="menuitemradio" data-scene="auto"><b>Changes with the day</b><span>Morning to night on its own</span></button>
+          <button type="button" role="menuitemradio" data-scene="picture" id="scenePicture"><b>Your picture</b><span>The blossom path</span></button>
+          <button type="button" role="menuitemradio" data-scene="meadow"><b>Living meadow</b><span>3D sky, grass and lake, following the real sun</span></button>
+          <button type="button" role="menuitemradio" data-scene="daisies"><b>Daisies in the wind</b><span>Real video</span></button>
+          <button type="button" role="menuitemradio" data-scene="sunset"><b>Sunset clouds</b><span>Real time-lapse</span></button>
+          <button type="button" role="menuitemradio" data-scene="orchard"><b>White orchard</b><span>Photo with falling petals</span></button>
+        </div>
+      </div>
       <button type="button" class="tag tourbtn" id="tourBtn"><svg class="ico" aria-hidden="true"><use href="#i-compass"/></svg> Tour</button>
       <span class="tag" id="mode">connecting</span>
       <a id="phone" href="/">Talk</a>
@@ -1775,6 +1801,56 @@
     golden: { name: "sunset-clouds", position: "62% 100%" },
   };
 
+  // A scene you pick stays until you pick another. "auto" follows the time of day.
+  const SCENES = {
+    picture: { name: "background", still: true, only: true },
+    orchard: { name: "orchard", still: true, only: true },
+    daisies: { name: "daisies", position: "32% 58%" },
+    sunset: { name: "sunset-clouds", position: "62% 100%" },
+    meadow: { world: true },
+  };
+  let scenePick = "auto";
+  try { scenePick = localStorage.getItem("chief-scene") || "auto"; } catch (_) {}
+  if (scenePick !== "auto" && !SCENES[scenePick]) scenePick = "auto";
+
+  function pickScene(name) {
+    scenePick = name;
+    try { localStorage.setItem("chief-scene", name); } catch (_) {}
+    footageFailed = false;
+    if (footage) stopVideo();
+    footage = "";
+    setLight();
+    showPicked();
+  }
+
+  function showPicked() {
+    for (const b of $("sceneMenu").querySelectorAll("button")) b.setAttribute("aria-checked", String(b.dataset.scene === scenePick));
+  }
+
+  function openScenes(open) {
+    $("sceneMenu").hidden = !open;
+    $("sceneBtn").setAttribute("aria-expanded", String(open));
+    if (open) ($("sceneMenu").querySelector('[aria-checked="true"]') || $("sceneMenu").querySelector("button")).focus();
+  }
+
+  $("sceneBtn").addEventListener("click", (e) => { e.stopPropagation(); openScenes($("sceneMenu").hidden); });
+  $("sceneMenu").addEventListener("click", (e) => {
+    const choice = e.target.closest("button[data-scene]");
+    if (!choice) return;
+    openScenes(false);
+    pickScene(choice.dataset.scene);
+  });
+  addEventListener("click", (e) => { if (!$("sceneMenu").hidden && !e.target.closest(".scenes")) openScenes(false); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("sceneMenu").hidden) { openScenes(false); $("sceneBtn").focus(); } });
+
+  // "Your picture" only appears on a computer that has one.
+  (() => {
+    const probe = new Image();
+    probe.onerror = () => { $("scenePicture").hidden = true; if (scenePick === "picture") pickScene("auto"); };
+    probe.src = "/dashboard/footage/background.jpg" + QUERY;
+  })();
+  showPicked();
+
   function canPlay() {
     return !params.has("noFootage") && !!$("footage").canPlayType('video/mp4; codecs="avc1.640029"');
   }
@@ -1791,15 +1867,22 @@
     body.dataset.real = "1";
     body.dataset.still = "1";
     delete body.dataset.footage;
-    if (footage === clip.name || footage === "background") return;
+    if (footage === clip.name || (!clip.only && footage === "background")) return;
     if (footage) stopVideo();
     footage = clip.name;
+    delete body.dataset.exact;
+    $("credit").hidden = true;
     const load = (name, ready, failed) => {
       const url = "/dashboard/footage/" + name + ".jpg" + QUERY, photo = new Image();
       photo.onload = () => { $("orchard").style.backgroundImage = `url("${url}")`; ready(); };
       photo.onerror = failed;
       photo.src = url;
     };
+    if (clip.only) {                                                                // exactly the scene you picked
+      const mine = clip.name === "background";
+      load(clip.name, mine ? () => { body.dataset.exact = "1"; } : () => { $("credit").hidden = false; seedDrift(); }, dropFootage);
+      return;
+    }
     // Your own picture if this computer has one, otherwise the orchard that ships with Chief.
     load("background", () => { footage = "background"; body.dataset.exact = "1"; },
       () => load(clip.name, () => { $("credit").hidden = false; seedDrift(); }, dropFootage));
@@ -1835,8 +1918,8 @@
   }
 
   function chooseScene() {
-    const clip = CLIPS[phase];
-    if (clip && !params.has("noFootage") && !footageFailed && (clip.still || canPlay())) { showFootage(clip); return; }
+    const clip = scenePick !== "auto" ? SCENES[scenePick] : CLIPS[phase];
+    if (clip && !clip.world && !params.has("noFootage") && !footageFailed && (clip.still || canPlay())) { showFootage(clip); return; }
     if (footage) { footage = ""; stopVideo(); }
     delete document.body.dataset.footage;
     delete document.body.dataset.still;
