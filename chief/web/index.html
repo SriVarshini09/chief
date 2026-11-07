@@ -12,7 +12,16 @@
 <script>
   // Every route needs the token, so the install links have to carry it.
   (() => {
-    const query = "?token=" + encodeURIComponent(new URLSearchParams(location.search).get("token") || "");
+    const query = "?token=" + encodeURIComponent((() => {  // the token is kept for this tab only, then taken out of the address bar (history, screen shares)
+      const p = new URLSearchParams(location.search), t = p.get("token");
+      if (t) {
+        try { sessionStorage.setItem("chief-token", t); } catch (_) {}
+        p.delete("token");
+        history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : "") + location.hash);
+        return t;
+      }
+      try { return sessionStorage.getItem("chief-token") || ""; } catch (_) { return ""; }
+    })());
     for (const [rel, href] of [["manifest", "/manifest.webmanifest"], ["apple-touch-icon", "/icons/apple-touch-icon.png"], ["icon", "/icons/icon-192.png"]]) {
       const link = document.createElement("link");
       link.rel = rel;
@@ -95,6 +104,18 @@
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
   .dot.busy { background: var(--warn); }
   .dot.ok { background: var(--ok); }
+  .places { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+  .places li { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .places b { display: block; }
+  .places .note { color: var(--muted); font-size: 14px; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .links a {
+    display: inline-flex; align-items: center; min-height: 40px; padding: 8px 14px; border-radius: 99px;
+    border: 1px solid var(--accent); color: var(--text); text-decoration: none; font-size: 14px;
+  }
+  .links a.main { background: var(--accent); color: #fff; }
+  #locBtn { margin-top: 10px; width: 100%; }
+  #locBtn.on { border-color: var(--ok); }
 </style>
 </head>
 <body>
@@ -123,12 +144,18 @@
       <button class="btn primary" type="submit">Send</button>
     </form>
     <div class="chips" id="chips"></div>
+    <button class="btn" type="button" id="locBtn">Share my location</button>
   </section>
 
   <section class="panel">
     <h2>Chief says</h2>
     <p class="said" id="heard"></p>
     <p id="say" class="empty">Nothing yet.</p>
+    <div class="card" id="consent" role="dialog" aria-labelledby="consentText" hidden>
+      <p id="consentText"><b>Can I use your live location?</b><br>I'll use it to find places and directions near you, keep it only while Chief is running, and you can switch it off any time.</p>
+      <div class="row"><button class="btn approve" type="button" id="consentYes">Allow</button><button class="btn" type="button" id="consentNo">Not now</button></div>
+    </div>
+    <div id="extra"></div>
     <button class="btn" type="button" id="undo" hidden></button>
   </section>
 
@@ -150,7 +177,16 @@
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const TOKEN = new URLSearchParams(location.search).get("token") || "";
+  const TOKEN = (() => {  // the token is kept for this tab only, then taken out of the address bar (history, screen shares)
+    const p = new URLSearchParams(location.search), t = p.get("token");
+    if (t) {
+      try { sessionStorage.setItem("chief-token", t); } catch (_) {}
+      p.delete("token");
+      history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : "") + location.hash);
+      return t;
+    }
+    try { return sessionStorage.getItem("chief-token") || ""; } catch (_) { return ""; }
+  })();
   const HEADERS = { "X-Chief-Token": TOKEN };
   $("garden").href = "/dashboard?token=" + encodeURIComponent(TOKEN);
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -193,8 +229,89 @@
   }
   $("testVoice").addEventListener("click", () => { primeSpeech(); speak("Hi, I'm Chief. Can you hear me?"); });
 
+  // ---- where you are: asked for only when you tap the button or a question needs it ---------
+  let haveLocation = false, watchId = null, lastSent = null;
+  function askConsent() {
+    return new Promise((resolve) => {
+      $("consent").hidden = false;
+      $("consentYes").focus();
+      const done = (ok) => { $("consent").hidden = true; resolve(ok); };
+      $("consentYes").onclick = () => done(true);
+      $("consentNo").onclick = () => done(false);
+    });
+  }
+  function followLocation() {  // live: sent again when you move about 100 m, or every 2 minutes
+    if (watchId !== null || !navigator.geolocation) return;
+    watchId = navigator.geolocation.watchPosition((pos) => {
+      const p = { lat: pos.coords.latitude, lon: pos.coords.longitude, at: Date.now() };
+      if (lastSent && Math.hypot((p.lat - lastSent.lat) * 111000, (p.lon - lastSent.lon) * 111000 * Math.cos(p.lat * Math.PI / 180)) < 100 && p.at - lastSent.at < 120000) return;
+      lastSent = p;
+      api("/location", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lat: p.lat, lon: p.lon }) }).catch(() => {});
+    }, () => {}, { enableHighAccuracy: true, maximumAge: 30000 });
+  }
+  function shareLocation() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) return reject(new Error("This browser can't share a location. Tell Chief instead: I'm at …"));
+      if (!window.isSecureContext) return reject(new Error("Location needs a secure page (https or this computer). Use Telegram's Share my location, or say: I'm at …"));
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        try {
+          await api("/location", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lat: pos.coords.latitude, lon: pos.coords.longitude }) });
+          haveLocation = true; showLocation();
+          lastSent = { lat: pos.coords.latitude, lon: pos.coords.longitude, at: Date.now() };
+          followLocation();
+          resolve();
+        } catch (e) { reject(e); }
+      }, () => reject(new Error("Location was not shared. You can tell Chief instead: I'm at …")), { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+    });
+  }
+  function showLocation() {
+    $("locBtn").textContent = haveLocation ? "Live location on: tap to stop" : "Share my location";
+    $("locBtn").classList.toggle("on", haveLocation);
+  }
+  $("locBtn").addEventListener("click", async () => {
+    setError("");
+    try {
+      if (haveLocation || watchId !== null) {
+        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        watchId = null; lastSent = null;
+        await api("/location", { method: "DELETE" }); haveLocation = false; showLocation();
+      }
+      else await shareLocation();
+    } catch (e) { setError(e.message); }
+  });
+
+  // Places, turns and links that came with an answer. Every link opens a page; nothing is booked or paid here.
+  function linkRow(links, first) {
+    const row = document.createElement("div"); row.className = "links";
+    links.filter((l) => /^(https?:|tel:)/i.test(l.url || "")).forEach((l, i) => {  // web pages and phone numbers only
+      const a = document.createElement("a");
+      a.href = l.url; a.textContent = l.label; a.target = "_blank"; a.rel = "noopener noreferrer";
+      if (first && i === 0) a.className = "main";
+      row.append(a);
+    });
+    return row;
+  }
+  function renderExtra(p) {
+    const box = $("extra");
+    box.replaceChildren();
+    if (!p) return;
+    if (p.items && p.items.length) {
+      const ul = document.createElement("ul"); ul.className = "places";
+      for (const it of p.items) {
+        const li = document.createElement("li");
+        const b = document.createElement("b"); b.textContent = it.title; li.append(b);
+        if (it.note) { const n = document.createElement("span"); n.className = "note"; n.textContent = it.note; li.append(n); }
+        if (it.links && it.links.length) li.append(linkRow(it.links, false));
+        ul.append(li);
+      }
+      box.append(ul);
+    }
+    if (p.links && p.links.length) box.append(linkRow(p.links, true));
+  }
+
   // ---- ask --------------------------------------------------------------
-  async function ask(text) {
+  async function ask(text, again) {
     text = (text || "").trim();
     if (!text) return;
     setError("");
@@ -208,6 +325,18 @@
       });
       $("say").textContent = out.say;
       $("say").classList.remove("empty");
+      renderExtra(out.proposal);
+      if (out.proposal && out.proposal.needs === "location" && !again) {
+        $("say").textContent = "Can I use your live location? Then I can check what's near you.";
+        speak($("say").textContent);
+        if (await askConsent()) {
+          try { await shareLocation(); setBusy(false); return ask(text, true); }  // then answer what you asked
+          catch (e) { setError(e.message); }
+        } else {
+          $("say").textContent = "Okay, I won't. You can tell me where you are instead, like: I'm at MG Road.";
+        }
+        return;
+      }
       speak(out.say);
     } catch (e) {
       setError(e.message);
@@ -427,6 +556,7 @@
       const sig = JSON.stringify(s.pending);
       if (sig !== lastPending) { lastPending = sig; renderPending(s.pending); }
       if (s.heard && !$("heard").textContent) $("heard").textContent = "You: " + s.heard;
+      if (haveLocation !== !!s.location) { haveLocation = !!s.location; showLocation(); }
       undoMark = s.undo ? s.undo.mark : "";
       $("undo").hidden = !s.undo;
       if (s.undo) $("undo").textContent = s.undo.label + (s.undo.seconds != null ? " (" + s.undo.seconds + "s)" : "");

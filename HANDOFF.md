@@ -44,7 +44,7 @@ python -m venv .venv
 .venv\Scripts\python.exe -m chief run --once --approve   # one heartbeat on seeded data
 .venv\Scripts\python.exe -m chief web                    # voice page + Stage; prints URLs with a token
 ```
-Useful for repeatable runs: `CHIEF_NOW=2026-10-21T08:00:00`, `CHIEF_STATE_DIR=<temp dir>`, `CHIEF_WEB_TOKEN=demo123`.
+Useful for repeatable runs: `CHIEF_NOW=2026-10-21T08:00:00`, `CHIEF_STATE_DIR=<temp dir>`, `CHIEF_WEB_TOKEN` left unset (a random token each run) or a long random one.
 The Stage is at `/stage?token=...`; the phone page is `/?token=...`.
 
 CLI subcommands: `run`, `web`, `skills`, `reset`, `doctor`, `demo`, `record-demo`, `show-login`, `show-demo`, `show-layout`, `slack`, `telegram`.

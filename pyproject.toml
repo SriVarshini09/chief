@@ -21,10 +21,12 @@ live = [
   "slack-bolt>=1.18",
   "fastapi>=0.110",
   "uvicorn>=0.29",
-  "python-multipart>=0.0.9",
+  "python-multipart>=0.0.18",  # older releases have known denial-of-service bugs
   "httpx>=0.27",
 ]
-dev = ["pytest>=8", "httpx>=0.27", "fastapi>=0.110", "python-multipart>=0.0.9"]
+# Just the dashboard, phone page and Telegram: a quick install (no Composio, OpenAI, Slack or Parallel).
+web = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.18", "httpx>=0.27"]
+dev = ["pytest>=8", "httpx>=0.27", "fastapi>=0.110", "python-multipart>=0.0.18"]
 
 [tool.setuptools.packages.find]
 include = ["chief*"]

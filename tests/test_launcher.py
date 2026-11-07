@@ -94,8 +94,8 @@ def test_demo_prints_urls_phrases_and_serves_with_a_generated_token(tmp_path, mo
 
 def test_demo_uses_the_configured_token_and_never_prints_other_secrets(tmp_path, monkeypatch):
     monkeypatch.setenv("COMPOSIO_API_KEY", "ak_SECRETVALUE1234567890")
-    code, text, calls = run(tmp_path, monkeypatch, token_env="my-fixed-token-1234567890")
-    assert calls.served[1] == "my-fixed-token-1234567890" and "random" not in text
+    code, text, calls = run(tmp_path, monkeypatch, token_env="Xk3fP9-qLm2Zr7Vw8Tn4Hs")
+    assert calls.served[1] == "Xk3fP9-qLm2Zr7Vw8Tn4Hs" and "random" not in text
     assert "ak_SECRETVALUE" not in text
 
 

@@ -158,8 +158,14 @@ def run_demo(
         for c in warns:
             out(f"  warning: {c.name}: {c.detail}")
 
-    token = os.getenv("CHIEF_WEB_TOKEN") or secrets.token_urlsafe(16)
+    from chief.config import MAKE_TOKEN, token_problem
+
+    token = os.getenv("CHIEF_WEB_TOKEN") or secrets.token_urlsafe(24)
     generated = not os.getenv("CHIEF_WEB_TOKEN")
+    problem = token_problem(token)
+    if problem:  # the demo can open a public tunnel: a guessable token would hand out your inbox
+        out(f"Not starting: {problem}. Make one with: {MAKE_TOKEN}, or leave CHIEF_WEB_TOKEN unset.")
+        return 2
     cfg_mode_note = {
         "mock": "MOCK: seeded data, nothing real is read or written",
         "live": "LIVE: real Gmail, Calendar and web search, no safety net",
@@ -181,7 +187,7 @@ def run_demo(
         try:
             from chief.web.app import serve as serve_fn  # noqa: PLW0127
         except ImportError:
-            out('The web page needs the live extras: pip install -e ".[live]"')
+            out('The web page needs the web extras: pip install -e ".[web]"')
             return 1
 
     stage = f"http://localhost:{port}/stage?token={token}"

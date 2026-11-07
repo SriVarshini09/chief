@@ -291,11 +291,11 @@ def test_demo_replays_through_the_layer_without_a_browser(capsys, monkeypatch):
     assert not [l for l in out.splitlines() if l.startswith("[screen]") and "javascript" in l]  # the bad url was filtered
 
 
-def test_cli_flags_and_subcommands(monkeypatch, capsys):
+def test_cli_flags_and_subcommands(monkeypatch, capsys, tmp_path):
     from chief import __main__ as cli
 
     monkeypatch.setenv("CHIEF_SHOW_DRY_RUN", "1")
-    monkeypatch.setenv("CHIEF_STATE_DIR", str(Path(__file__).parent / "_unused_state"))
+    monkeypatch.setenv("CHIEF_STATE_DIR", str(tmp_path / "state"))  # never a folder inside the repository
     assert cli.main(["show-login"]) == 0
     assert "TEST Google account" in capsys.readouterr().out
     attached = []

@@ -132,7 +132,7 @@ def test_a_failing_task_does_not_stop_the_other(rt, tools):
     out = handle_utterance(rt, TWO)
     by_skill = {t["skill"]: t for t in out["tasks"]}
     assert by_skill["meeting_prep"]["proposal_id"] is not None
-    assert "couldn't finish trip_planner" in by_skill["trip_planner"]["say"]
+    assert "couldn't reach web search" in by_skill["trip_planner"]["say"] and "Nothing was changed" in by_skill["trip_planner"]["say"]
     errors = [e for e in rt.bus.since(0) if e.kind == "error"]
     assert errors and errors[0].detail["task"] == by_skill["trip_planner"]["id"]
 

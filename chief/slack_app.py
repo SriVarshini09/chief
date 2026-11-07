@@ -99,9 +99,13 @@ def _update(client: Any, body: dict, blocks: list[dict], text: str) -> None:
     )
 
 
-def _handle(runtime: Any, ack: Callable, body: dict, client: Any, decision: str) -> None:
+def _handle(runtime: Any, ack: Callable, body: dict, client: Any, decision: str, owner: str) -> None:
     ack()  # first, always: Slack needs a response within 3 seconds
     try:
+        clicker = str((body.get("user") or {}).get("id") or "")
+        if not owner or clicker != owner:  # anyone in the channel can see a card; only you can decide it
+            log.warning("slack %s from someone other than SLACK_USER_ID was ignored", decision)
+            return
         proposal_id = body["actions"][0]["value"]
         proposal = runtime.gate.pending.get(proposal_id)
         if proposal is None:
@@ -127,16 +131,20 @@ def _already_handled(client: Any, body: dict, proposal_id: str) -> None:
     log.info("click on unknown or handled proposal %s", proposal_id)
 
 
-def register_handlers(app: Any, runtime: Any) -> None:
-    """Attach the Approve / Skip button handlers to a bolt App (or anything with `.action`)."""
+def register_handlers(app: Any, runtime: Any, owner: str | None = None) -> None:
+    """Attach the Approve / Skip button handlers to a bolt App (or anything with `.action`).
+
+    Only clicks from `owner` (SLACK_USER_ID, your Slack member ID) count: a channel can have other people in it,
+    and an Approve can send email from your account."""
+    owner = (owner if owner is not None else os.getenv("SLACK_USER_ID", "")).strip()
 
     @app.action(APPROVE)
     def on_approve(ack, body, client):
-        _handle(runtime, ack, body, client, APPROVE)
+        _handle(runtime, ack, body, client, APPROVE, owner)
 
     @app.action(SKIP)
     def on_skip(ack, body, client):
-        _handle(runtime, ack, body, client, SKIP)
+        _handle(runtime, ack, body, client, SKIP, owner)
 
 
 def build_app(cfg: Config) -> tuple[Any, Any]:
@@ -153,7 +161,7 @@ def build_app(cfg: Config) -> tuple[Any, Any]:
 
 def run_slack(cfg: Config) -> int:
     """`python -m chief slack`: start Socket Mode (button clicks) and the heartbeat (new proposals)."""
-    missing = [v for v in ("SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL") if not os.getenv(v)]
+    missing = [v for v in ("SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL", "SLACK_USER_ID") if not os.getenv(v)]
     if missing:
         print(f"Missing {', '.join(missing)}. See docs/slack-setup.md.")
         return 2

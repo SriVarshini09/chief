@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 from chief.activity import task_scope
 from chief.conversation import Task, pending_note, resolve
@@ -167,11 +168,36 @@ def _nothing(task: Task) -> str:
 
         if parse_request(task.request, None) is None:  # no "head to <place>": say what is missing
             return NO_DESTINATION
+    if task.skill == "meeting_prep":
+        return "I don't see a meeting with anyone outside your team in the next day and a half, so there's nothing to prep yet."
     return NOTHING
 
 
-def _run_task(rt: Runtime, task: Task, catch: bool) -> Proposal | None:
-    """Runs one skill with its task id on every event it emits. Safe to call from a worker thread."""
+# Which outside service a failed tool belongs to, so the person hears what broke and not a Python error.
+_SERVICE = {
+    "list_events": "your calendar", "find_free_slots": "your calendar", "patch_event": "your calendar",
+    "create_event": "your calendar", "delete_event": "your calendar", "fetch_emails": "your email",
+    "fetch_thread": "your email", "create_draft": "your email", "send_email": "your email",
+    "search_web": "web search", "read_health": "your sleep data", "post_slack": "Slack",
+    "find_places": "the map service", "find_location": "the map service", "get_route": "the map service",
+    "list_folder": "your files", "open_folder": "your files", "open_file": "your files",
+}
+
+
+def failure_text(rt: Runtime, since: int, skill: str) -> str:
+    """Plain words for a failure: which service, that nothing changed, what to do. Never the error's own text,
+    which can hold addresses, ids or keys."""
+    failed = [e.tool for e in rt.bus.since(since) if e.kind == "error" and e.tool]
+    service = _SERVICE.get(failed[-1], "") if failed else ""
+    if service:
+        return f"I couldn't reach {service} just now, so I didn't finish that. Nothing was changed. Try again in a minute."
+    return "Something went wrong on my side, so I didn't finish that. Nothing was changed. Try again, or ask another way."
+
+
+def _run_task(rt: Runtime, task: Task, catch: bool = True) -> Proposal | None:
+    """Runs one skill with its task id on every event it emits. Safe to call from a worker thread.
+    A failure becomes a plain answer (see failure_text) unless `catch` is False."""
+    started = rt.bus.last_seq
     with task_scope(task.id):
         try:
             proposal = rt.run_skill(task.skill, request=task.request)
@@ -179,7 +205,8 @@ def _run_task(rt: Runtime, task: Task, catch: bool) -> Proposal | None:
             if not catch:
                 raise
             rt.bus.emit("error", f"{task.skill} failed: {type(exc).__name__}", ok=False, detail={"skill": task.skill})
-            task.say = f"I couldn't finish {task.skill}: {type(exc).__name__}."
+            task.say = failure_text(rt, started, task.skill)
+            task.failed = True
             return None
         task.say = proposal.summary if proposal else _nothing(task)
         task.proposal_id = proposal.id if proposal else None
@@ -192,11 +219,12 @@ def _run_task(rt: Runtime, task: Task, catch: bool) -> Proposal | None:
 
 def _run_tasks(rt: Runtime, plan: list[tuple[str, str]]) -> dict:
     tasks = [Task(rt.conversation.new_task_id(), skill, request) for skill, request in plan]
-    if len(tasks) == 1:  # the ordinary case: same thread, same replies as before, errors propagate
+    if len(tasks) == 1:  # the ordinary case: same thread, one answer
         t = tasks[0]
-        proposal = _run_task(rt, t, catch=False)
+        proposal = _run_task(rt, t)
         if proposal is None:
-            return _result(t.say, steps=[f"Running {t.skill}", "No changes proposed"], tasks=tasks)
+            done = "Failed" if t.failed else "No changes proposed"
+            return _result(t.say, steps=[f"Running {t.skill}", done], tasks=tasks)
         ready = "Proposal ready: approve or skip" if proposal.actions else "Read-only result ready"
         return _result(proposal.summary, proposal, [f"Running {t.skill}", ready], tasks=tasks)
 
@@ -256,6 +284,49 @@ def _approve(rt: Runtime, ids: list[str]) -> dict:
     return _result(say + (" " + note if note else ""), steps=steps)
 
 
+YES_FOR = timedelta(minutes=30)  # after this a spoken "yes" no longer approves a card: tap its button instead
+
+
+def _approve_offered(rt: Runtime, pending: list[Proposal]) -> dict:
+    """A plain "yes" approves only the card the last answer asked about, and only while it is fresh. "sure" or a
+    misheard word must never approve something older, or something shown on another screen."""
+    offered = rt.conversation.offered
+    target = next((p for p in pending if p.id == offered), None)
+    if target is None:
+        latest = pending[-1]
+        return _result(f'Approve what? To approve "{_brief(latest)}", tap Approve on its card, or ask me again.')
+    shown = rt.gate.since.get(target.id)
+    if shown is not None and rt.now() - shown > YES_FOR:
+        return _result(f'"{_brief(target)}" has been waiting a while. Tap Approve on its card if you still want it.')
+    return _approve(rt, [target.id])
+
+
+def _brief(p: Proposal) -> str:
+    text = p.summary.splitlines()[0] if p.summary else ""
+    return text if len(text) <= 90 else text[:87] + "..."
+
+
+def _remember_offer(rt: Runtime, out: dict, before: set[str]) -> None:
+    """Which card a "yes" to this answer would mean, and whether it offered undo.
+
+    A card you were shown stays offered while you ask other things ("how's my week", then "what's in my inbox",
+    then "do it"). Cards you were never shown in this conversation, like a heartbeat card on another screen, never are."""
+    pending = list(rt.gate.pending.values())
+    lead = out.get("proposal")
+    say = out.get("say") or ""
+    new = [p for p in pending if p.id not in before]  # e.g. a stopped email coming back as a card
+    if lead is not None and lead.actions and lead.id in rt.gate.pending:
+        offered = lead.id
+    elif new:
+        offered = new[-1].id
+    elif pending and ("Waiting for your OK" in say or "'do it'" in say):
+        offered = pending[-1].id  # the note at the end of the answer named it
+    else:
+        offered = rt.conversation.offered if rt.conversation.offered in rt.gate.pending else None
+    rt.conversation.offered = offered
+    rt.conversation.undo_offered = "say undo" in say.lower()
+
+
 def _skip(rt: Runtime, ids: list[str]) -> dict:
     for pid in ids:
         if pid in rt.gate.pending:
@@ -291,6 +362,7 @@ def handle_utterance(rt: Runtime, text: str) -> dict:
     """Returns {"say": str, "proposal": Proposal | None, "steps": [str], "proposals": [Proposal],
     "tasks": [{"id", "skill", "say", "proposal_id"}]}. Also reports to rt.bus."""
     rt.bus.emit("heard", text)
+    before = set(rt.gate.pending)
     out = _handle(rt, text)
     tasks = out.pop("_tasks")
     rt.bus.emit(
@@ -303,12 +375,15 @@ def handle_utterance(rt: Runtime, text: str) -> dict:
         },
     )
     rt.conversation.record(text, out["say"], tasks, out["proposals"])
+    _remember_offer(rt, out, before)
     return out
 
 
 def _handle(rt: Runtime, text: str) -> dict:
     said = _norm(text)
     if not said:
+        if text.strip():  # emoji or symbols only: it heard you, it just has no words to go on
+            return _result("I can only read words for now. Try: what's on today?")
         return _result("I didn't catch that.")
 
     pending = list(rt.gate.pending.values())
@@ -318,7 +393,7 @@ def _handle(rt: Runtime, text: str) -> dict:
         return said in group or cmd in group
 
     if pending and is_(APPROVE):
-        return _approve(rt, [pending[-1].id])  # only the most recent
+        return _approve_offered(rt, pending)
     if pending and is_(APPROVE_ALL):
         last = set(rt.conversation.last_proposal_ids)
         ids = [p.id for p in pending if p.id in last]
@@ -332,6 +407,8 @@ def _handle(rt: Runtime, text: str) -> dict:
         return _skip(rt, [p.id for p in pending if p.id in last] or [pending[-1].id])
     if rt.gate.held and (is_(UNDO) or is_({"never mind", "cancel", "stop", "dont send it", "don't send it"})):
         return _result(rt.gate.undo() or "It has already gone.")
+    if is_(UNDO) and rt.gate.last_undo and rt.conversation.undo_offered:
+        return _result(rt.gate.undo() or "There is nothing to undo.")  # you were just told "say undo"
     if pending and is_(UNDO):
         return _skip(rt, [pending[-1].id])
     if is_(UNDO) and rt.gate.last_undo:
@@ -362,7 +439,7 @@ def _handle(rt: Runtime, text: str) -> dict:
     if small:
         return _result(small)
     say = (
-        "I can help with your inbox, your calendar, reminders, email replies, meeting prep and a morning brief. "
+        "I can help with your inbox, your calendar, reminders, email replies, meeting prep, a morning brief, places near you and directions. "
         "Try: what's on tomorrow?"
     )
     if not rt.llm.enabled:
@@ -388,6 +465,7 @@ def _small_talk(said: str) -> str | None:
         return (
             "I can tell you what's on your calendar, find free time, set reminders, and move or cancel meetings. "
             "I can also sum up your inbox, tell you what someone said, and draft replies. "
+            "Out and about, I find places near you (sushi near me), give directions and get a table ready for you to book. "
             "Nothing changes until you approve it. Try: remind me to call mom at 6pm."
         )
     return None

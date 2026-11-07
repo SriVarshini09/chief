@@ -21,7 +21,7 @@ def when(value: object) -> str | None:
     return f"{d:%a %b} {d.day}, {clock(d)}"
 
 
-def _plain_event_change(args: dict) -> str | None:
+def _plain_event_change(args: dict, name: str | None = None) -> str | None:
     fields = args.get("fields")
     if set(args) != {"event_id", "fields"} or not isinstance(fields, dict) or not fields or set(fields) - {"summary", "description", "start", "end"}:
         return None
@@ -41,9 +41,16 @@ def _plain_event_change(args: dict) -> str | None:
             if moved is None:
                 return None
             parts.append(f"{verb} {moved}")
-    if not parts:
-        return "Update the notes on a calendar event"
-    return ", ".join(parts)
+    notes = fields.get("description")
+    which = f" [the event now: {name}]" if name else ""
+    if not parts and notes is None:
+        return None
+    text = (", ".join(parts) if parts else "Change a calendar event's notes") + which
+    if "start" in fields or "end" in fields:
+        text += ". Guests aren't emailed: tell them yourself"
+    if notes is not None:
+        text += f"\nNew notes, in full:\n{notes}" if str(notes).strip() else "\nand clear its notes"
+    return text
 
 
 def _plain_mail(verb: str, args: dict) -> str | None:
@@ -61,23 +68,30 @@ class ToolCall:
         shown = ", ".join(f"{k}={v!r}" for k, v in self.args.items())
         return f"{self.tool}({shown})"
 
-    def plain(self) -> str:
+    def plain(self, names: dict[str, str] | None = None) -> str:
         """What this does, for the person approving it. The approval depends on this being true, so an
-        email shows its whole text, and anything not fully understood falls back to `describe()`."""
-        return self._plain_or_none() or self.describe()
+        email shows its whole text, notes are shown in full, a change names the event it touches (`names`:
+        event id -> '"Standup", Thu Oct 22, 10:00 AM', looked up by the gate), and anything not fully
+        understood falls back to `describe()`."""
+        return self._plain_or_none(names or {}) or self.describe()
 
-    def _plain_or_none(self) -> str | None:
+    def _plain_or_none(self, names: dict[str, str]) -> str | None:
         args = self.args
         if self.tool == "create_event" and not set(args) - {"title", "start", "end", "description"}:
             start, end = when(args.get("start")), when(args.get("end"))
             if args.get("title") and start and end:
                 if start.split(", ")[0] == end.split(", ")[0]:  # same day: say the date once
                     end = end.split(", ")[1]
-                return f'Add "{args["title"]}" to your calendar: {start} to {end}'
+                text = f'Add "{args["title"]}" to your calendar: {start} to {end}'
+                if str(args.get("description") or "").strip():
+                    text += f"\nNotes, in full:\n{args['description']}"
+                return text
         if self.tool == "patch_event":
-            return _plain_event_change(args)
+            return _plain_event_change(args, names.get(str(args.get("event_id"))))
         if self.tool == "delete_event" and set(args) == {"event_id"}:
-            return f"Delete calendar event {args['event_id']}"
+            name = names.get(str(args["event_id"]))
+            gone = f"Delete {name} from your calendar" if name else f"Delete calendar event {args['event_id']}"
+            return gone + ". Guests aren't emailed: tell them yourself"
         if self.tool == "send_email":
             return _plain_mail("Send this email", args)
         if self.tool == "create_draft":
@@ -95,6 +109,9 @@ class Proposal:
     key: str  # dedupe key: the same situation never produces a second card
     sources: list[str] = field(default_factory=list)
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
+    links: list[dict] = field(default_factory=list)  # [{"label", "url"}]: things you open yourself (a map, a booking page)
+    items: list[dict] = field(default_factory=list)  # [{"title", "note", "links"}]: a list to show, like places nearby
+    needs: str = ""  # "location": the answer needs to know where you are; the page or Telegram can ask for it
 
 
 @dataclass

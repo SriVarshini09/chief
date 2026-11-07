@@ -13,8 +13,9 @@ Safety rules (all covered by tests/test_local_tools.py):
   * A path must be absolute and, after resolving symlinks, junctions and `..`, sit inside an allow-listed root.
     UNC paths (\\\\server\\share), device paths (\\\\?\\, \\\\.\\), NTFS alternate data streams and names that end in
     a dot or space (which Windows silently strips) are refused outright.
-  * Roots: CHIEF_LOCAL_ROOTS (";"-separated) or, by default, Desktop, Documents, Downloads and the project's
-    demo folder. `<state_dir>/briefs` (where Chief saves its own one-page briefs) is always allowed too.
+  * Roots: CHIEF_LOCAL_ROOTS (";"-separated) or, by default, only the project's demo folder (Desktop, Documents
+    and Downloads hold real names, so you add them yourself). `<state_dir>/briefs` (where Chief saves its own
+    one-page briefs) is always allowed too.
     A drive root or your whole home folder is never accepted as a root.
   * open_file only opens an extension from SAFE_EXTENSIONS. Executables, scripts, shortcuts, installers and
     macro-enabled Office files are refused, whatever the allow-list says.

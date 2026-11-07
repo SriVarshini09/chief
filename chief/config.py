@@ -101,3 +101,17 @@ class Config:
 
     def in_active_hours(self, now: datetime) -> bool:
         return self.active_start <= now.hour < self.active_end
+
+MIN_TOKEN_CHARS = 20
+_GUESSABLE = ("demo", "test", "pass", "token", "chief", "secret", "admin", "1234", "abcd", "qwer")
+MAKE_TOKEN = "python -c \"import secrets; print(secrets.token_urlsafe(24))\""
+
+
+def token_problem(token: str) -> str | None:
+    """Why a web token is too weak to guard your inbox, or None. The token is the only lock on the page."""
+    if len(token) < MIN_TOKEN_CHARS:
+        return f"CHIEF_WEB_TOKEN is too short ({len(token)} characters; use at least {MIN_TOKEN_CHARS})"
+    low = token.lower()
+    if any(word in low for word in _GUESSABLE) or len(set(token)) < 8:
+        return "CHIEF_WEB_TOKEN is easy to guess"
+    return None

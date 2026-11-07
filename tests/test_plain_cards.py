@@ -33,7 +33,7 @@ def test_calendar_changes_read_naturally(title, expected):
 
 def test_a_new_event_shows_its_title_and_times():
     plain = ToolCall("create_event", {"title": "Focus", "start": "2026-10-22T14:00:00", "end": "2026-10-22T15:30:00", "description": "d"}).plain()
-    assert plain == 'Add "Focus" to your calendar: Thu Oct 22, 2:00 PM to 3:30 PM'
+    assert plain == 'Add "Focus" to your calendar: Thu Oct 22, 2:00 PM to 3:30 PM\nNotes, in full:\nd'
 
 
 def test_an_event_across_two_days_shows_both_dates():

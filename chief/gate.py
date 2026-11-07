@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 from chief.activity import ActivityBus
 from chief.memory import Memory
-from chief.models import Proposal, ToolCall
+from chief.models import Proposal, ToolCall, when
 from chief.skills.base import Skill
 from chief.tools import Tools
 
@@ -47,6 +47,20 @@ def results_text(results: list[dict]) -> str:
     return f"Done. {len(results)} change(s) made."
 
 
+# Answers about places say where you are ("Sakura, 120 m away"), so they are never written to the state folder.
+WHERE_SKILLS = {"nearby", "directions", "booking"}
+
+
+def _saved(proposal) -> str:
+    """What the diary on disk keeps about a card: never your mail or where you are, just enough to recognise it."""
+    if proposal.skill in WHERE_SKILLS:
+        return "(a places answer: kept in memory only)"
+    if not proposal.actions:  # inbox briefs, prep, AI answers: they quote your mail
+        return f"(an answer, {len(proposal.summary)} characters: not saved)"
+    first = proposal.summary.splitlines()[0] if proposal.summary else ""
+    return first if len(first) <= 80 else first[:77] + "..."
+
+
 class ApprovalGate:
     def __init__(
         self,
@@ -61,6 +75,8 @@ class ApprovalGate:
         self.tools, self.memory, self.skills, self.notify = tools, memory, skills, notify
         self.bus = bus or ActivityBus()
         self.pending: dict[str, Proposal] = {}
+        self.names: dict[str, dict[str, str]] = {}  # proposal id -> event id -> what the card calls it
+        self.since: dict[str, datetime] = {}  # proposal id -> when it was first shown
         self.send_delay, self.clock = send_delay, clock
         self.held: dict[int, Held] = {}  # approved emails that have not gone yet
         self.last_undo: list[ToolCall] = []  # what reverses the last approval's calendar changes
@@ -113,19 +129,22 @@ class ApprovalGate:
         if not proposal.actions:
             # A read-only result (briefing, prep): show it, but never queue it. Otherwise a later
             # "do it" could land on a card with nothing to approve instead of the real proposal.
-            self.memory.log("answered", id=proposal.id, skill=proposal.skill, summary=proposal.summary)
+            self.memory.log("answered", id=proposal.id, skill=proposal.skill, summary=_saved(proposal))
             self._emit_proposal(proposal)
             self.notify(proposal)
             return
+        self.names[proposal.id] = self._event_names(proposal)
+        self.since.setdefault(proposal.id, self.clock())
         with self._lock:
             self.pending[proposal.id] = proposal
-        self.memory.log("proposed", id=proposal.id, skill=proposal.skill, summary=proposal.summary)
+        self.memory.log("proposed", id=proposal.id, skill=proposal.skill, summary=_saved(proposal))
         self._emit_proposal(proposal)
         self.notify(proposal)
 
     def approve(self, proposal_id: str) -> list[dict]:
         with self._lock:
             proposal = self.pending.pop(proposal_id)
+            self.names.pop(proposal_id, None)
         self.bus.emit("approved", f"Approved: {proposal.summary}", detail={"id": proposal.id, "skill": proposal.skill})
         results: list[dict] = []
         reverse: list[ToolCall] = []
@@ -148,7 +167,7 @@ class ApprovalGate:
             if step:
                 reverse.append(step)
         self._remember_undo(reverse)
-        self.memory.record(key=proposal.key, skill=proposal.skill, decision="accepted", summary=proposal.summary)
+        self.memory.record(key=proposal.key, skill=proposal.skill, decision="accepted", summary=_saved(proposal))
         self.memory.log("approved", id=proposal.id, results=results)
         return results
 
@@ -164,6 +183,23 @@ class ApprovalGate:
         self.notify(proposal)
 
     # ---- undo: calendar changes can be reversed, and an email can be stopped until it goes ---------
+
+    def _event_names(self, proposal: Proposal) -> dict[str, str]:
+        """'"Standup", Thu Oct 22, 10:00 AM' for each event a card would change, so the card can say which."""
+        ids = {str(a.args.get("event_id")) for a in proposal.actions if a.tool in ("patch_event", "delete_event")}
+        if not ids:
+            return {}
+        try:
+            now = self.clock()
+            events = self.tools.list_events(now - timedelta(days=90), now + timedelta(days=365))
+        except Exception:
+            return {}  # the card falls back to the event id: still true, just less friendly
+        return {e.id: f'"{e.title}", {when(e.start)}' for e in events if e.id in ids}
+
+    def plain(self, proposal: Proposal) -> list[str]:
+        """What each action does, in words, naming the events it touches."""
+        names = self.names.get(proposal.id, {})
+        return [a.plain(names) for a in proposal.actions]
 
     def _before(self, action: ToolCall) -> dict | None:
         """The fields a calendar change will overwrite. None means it cannot be reversed."""
@@ -256,6 +292,7 @@ class ApprovalGate:
     def skip(self, proposal_id: str) -> None:
         with self._lock:
             proposal = self.pending.pop(proposal_id)
+            self.names.pop(proposal_id, None)
         self.bus.emit("skipped", f"Skipped: {proposal.summary}", detail={"id": proposal.id, "skill": proposal.skill})
-        self.memory.record(key=proposal.key, skill=proposal.skill, decision="rejected", summary=proposal.summary)
+        self.memory.record(key=proposal.key, skill=proposal.skill, decision="rejected", summary=_saved(proposal))
         self.memory.log("skipped", id=proposal.id)

@@ -214,6 +214,9 @@ def test_your_own_picture_is_optional_and_stays_out_of_git(client, monkeypatch, 
     assert client.get("/dashboard/footage/background.jpg").status_code == 401
     assert client.get("/dashboard/footage/background.jpg", headers=H).content == b"\xff\xd8picture"
     ignored = subprocess.run(["git", "check-ignore", "chief/web/footage/background.jpg"], capture_output=True, text=True)
+    if ignored.returncode == 128:  # not a git checkout (a downloaded zip): read the rule instead
+        assert "chief/web/footage/background.jpg" in open(".gitignore", encoding="utf-8").read()
+        return
     assert ignored.returncode == 0
 
 

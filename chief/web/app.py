@@ -10,6 +10,7 @@ from __future__ import annotations
 import hmac
 import os
 import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Protocol
@@ -44,6 +45,15 @@ ICONS = Path(__file__).parent / "icons"
 ICON_NAMES = {"icon-192.png", "icon-512.png", "apple-touch-icon.png"}
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 MAX_TEXT_CHARS = 2000
+COOKIE = "chief_token"
+SAFETY_HEADERS = {
+    "Referrer-Policy": "no-referrer",  # links you open never learn the page address
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",  # no other site can show Chief inside a frame and trick a click on Approve
+    "Content-Security-Policy": "frame-ancestors 'none'",
+}
+MAX_WRONG_TOKENS = 20  # per address, within GUESS_WINDOW seconds; then 429 until the window passes
+GUESS_WINDOW = 300.0
 
 
 class Transcriber(Protocol):
@@ -95,9 +105,12 @@ def proposal_json(p: Proposal, rt: Runtime) -> dict:
         "skill": p.skill,
         "label": (skill.label if skill else "") or p.skill,
         "summary": p.summary,
-        "plain": [a.plain() for a in p.actions],  # what the person reads before approving
+        "plain": rt.gate.plain(p),  # what the person reads before approving, naming the events it touches
         "actions": [a.describe() for a in p.actions],  # the exact calls, behind "Exact details"
         "sources": list(p.sources),
+        "links": [dict(link) for link in p.links],  # things you open yourself: a map, a booking page
+        "items": [dict(item) for item in p.items],  # a list to show, like places nearby
+        "needs": p.needs,  # "location": ask the browser where you are, then ask again
     }
 
 
@@ -121,12 +134,42 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
     state.lock = rt.turn_lock
     app = FastAPI(title="Chief", docs_url=None, redoc_url=None, openapi_url=None)
 
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        response = await call_next(request)
+        for name, value in SAFETY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        given = request.query_params.get("token", "")
+        if given and response.status_code < 400 and hmac.compare_digest(given.encode(), token.encode()):
+            response.set_cookie(  # so a reload works after the page takes the token out of the address bar
+                COOKIE, token, httponly=True, samesite="strict", secure=request.url.scheme == "https", path="/",
+            )
+        return response
+
+    misses: dict[str, list[float]] = {}  # client address -> times of wrong tokens
+    misses_lock = threading.Lock()
+
     def require_token(request: Request) -> None:
+        who = request.client.host if request.client else "?"
+        now = time.monotonic()
+        with misses_lock:
+            recent = [t for t in misses.get(who, []) if now - t < GUESS_WINDOW]
+            misses[who] = recent
+            if len(recent) >= MAX_WRONG_TOKENS:
+                raise HTTPException(status_code=429, detail="too many wrong tokens; wait a few minutes")
         given = request.query_params.get("token") or request.headers.get("x-chief-token") or ""
         bearer = request.headers.get("authorization", "")
         if not given and bearer.lower().startswith("bearer "):
             given = bearer[7:].strip()
+        if not given and request.method == "GET":
+            # Reloading a page whose address no longer shows the token. Only for reading: anything that
+            # approves, asks or changes still needs the token itself, so the cookie can't be used against you.
+            given = request.cookies.get(COOKIE, "")
         if not hmac.compare_digest(given.encode(), token.encode()):
+            with misses_lock:
+                misses.setdefault(who, []).append(now)
+                if len(misses) > 10_000:  # never grow without bound
+                    misses.clear()
             raise HTTPException(status_code=401, detail="missing or wrong token")
 
     auth = [Depends(require_token)]
@@ -188,7 +231,8 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
 
     @app.post("/ask", dependencies=auth)
     def ask(body: dict) -> dict:
-        text = str(body.get("text", "")).strip()[:MAX_TEXT_CHARS]
+        raw = body.get("text")
+        text = raw.strip()[:MAX_TEXT_CHARS] if isinstance(raw, str) else ""  # null or a number is not something said
         if not text:
             raise HTTPException(400, "text is required")
         with state.lock:
@@ -239,6 +283,22 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
             reply(say, ["Undone"])
             return {"say": say}
 
+    # ---- where you are: kept in memory only, never on disk ---------------------------------------------
+
+    @app.post("/location", dependencies=auth)
+    def share_location(body: dict) -> dict:
+        try:
+            lat, lon = float(body.get("lat")), float(body.get("lon"))
+            here = rt.where.set(lat, lon, label="", source="browser", now=rt.now())
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, "lat and lon must be numbers on Earth") from exc
+        return {"ok": True, "source": here.source}
+
+    @app.delete("/location", dependencies=auth)
+    def forget_location() -> dict:
+        rt.where.clear()
+        return {"ok": True}
+
     @app.get("/status", dependencies=auth)
     def status() -> dict:
         return {
@@ -251,6 +311,7 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
             "steps": state.steps,
             "pending": [proposal_json(p, rt) for p in list(rt.gate.pending.values())],
             "stt": getattr(stt, "enabled", True),
+            "location": rt.where.here(rt.now()) is not None,
         }
 
     # ---- the garden dashboard: today, the week, mail and approvals in one view --------------------

@@ -35,6 +35,9 @@ _WORKING = {
     "list_folder": "Looking inside a folder",
     "open_folder": "Opening a folder on screen",
     "open_file": "Opening a document on screen",
+    "find_places": "Looking for places nearby",
+    "find_location": "Looking up a place",
+    "get_route": "Working out the route",
 }
 
 
@@ -85,6 +88,12 @@ def _title(name: str, args: dict, result: Any) -> str:
         return f"Created calendar event: {args.get('title', '')}"
     if name == "delete_event":
         return "Deleted a calendar event"
+    if name == "find_places":
+        return f"Found {n} place(s): {str(args.get('what', ''))[:60]}"
+    if name == "find_location":
+        return f"Looked up {str(args.get('text', ''))[:60]}" + ("" if result else ": not found")
+    if name == "get_route":
+        return f"Worked out a route ({args.get('mode', 'foot')})"
     if name == "list_folder":
         return f"Looked inside {_leaf(args.get('path'))}: {result.get('count', 0) if isinstance(result, dict) else 0} item(s)"
     if name == "open_folder":
@@ -92,6 +101,11 @@ def _title(name: str, args: dict, result: Any) -> str:
     if name == "open_file":
         return f"Opened the document {_leaf(args.get('path'))}"
     return f"Sent an email to {args.get('to', '')}"
+
+
+def _coarse(args: dict) -> dict:
+    """The activity log keeps coordinates to about 1 km: enough to follow along, not to pin anyone."""
+    return {k: round(v, 2) if isinstance(v, float) and k.endswith(("lat", "lon")) else v for k, v in args.items()}
 
 
 def _make(name: str):
@@ -105,7 +119,7 @@ def _make(name: str):
         except TypeError:
             call_args = {"args": list(args), **kwargs}
         ref = next(_refs)
-        safe_args = _jsonable(call_args)
+        safe_args = _jsonable(_coarse(call_args))
         self.bus.emit("working", _WORKING[name] + "...", tool=name, detail={"ref": ref, "args": safe_args})
         try:
             result = getattr(self.inner, name)(*args, **kwargs)

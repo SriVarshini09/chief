@@ -18,9 +18,17 @@ Open source under MIT. Try it in a minute with sample data: no accounts, no keys
 ```bash
 git clone https://github.com/SriVarshini09/chief && cd chief
 python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[dev,live]"     # macOS / Linux: .venv/bin/python
+.venv/Scripts/python -m pip install -e ".[web]"          # about a minute. macOS / Linux: .venv/bin/python
 .venv/Scripts/python -m chief web                        # open the Garden dashboard link it prints
 ```
+
+Then type into the box: *morning brief*, *what's in my inbox*, *prep me for my meeting with Dana*, *remind me to call
+mom at 6pm*, *sushi near me*. The sample data follows today's date, so these work on any day. For real Gmail and
+Calendar, install `".[live]"` instead (bigger: Composio, OpenAI, Slack, Parallel) and see [docs/live-tools.md](docs/live-tools.md).
+
+For a setup other people will use, install the exact versions Chief is tested with:
+`pip install -r requirements-lock.txt` then `pip install -e . --no-deps`. If you set `CHIEF_WEB_TOKEN`, make it long
+and random (`python -c "import secrets; print(secrets.token_urlsafe(24))"`): Chief refuses short or guessable ones.
 
 > **What's real today:** everything above works on sample data, and that is what the quickstart shows. Reading real Gmail, sending email and creating and undoing Calendar events work on a real account; drafts and replies in a thread are
 > not verified yet, and real Telegram is connected but its buttons are untested. [Status and verification](#status-and-verification) lists each
@@ -39,7 +47,10 @@ python -m venv .venv
 | `trip_planner` | "I'm heading to Palo Alto after this, find me a Caltrain after 6 and a boba place on the way" | Uses train times **only** if they appear in a search result from a pinned source (caltrain.com, 511.org), with the link; otherwise says so and proposes nothing. | proposes `create_event` |
 | `open_brief` | "Show me the brief" | Puts the one-page brief for your next outside meeting on screen (builds it first if needed). Opens one saved page only. | none (opens a file on screen) |
 | `morning_brief` | "Morning brief" | A short read of today: meetings, mail that needs an answer and deadlines. Sent once each morning on Telegram. | none |
-| `files` | "Open my downloads", "What's in my documents?" | Opens an allow-listed folder on screen and says what is in it. Read-only. | none (opens a folder on screen) |
+| `files` | "Open my demo folder", "What's in my demo folder?" | Opens an allow-listed folder on screen and says what is in it. Read-only. Only the demo and briefs folders by default; `CHIEF_LOCAL_ROOTS` adds more ([docs/local-actions.md](docs/local-actions.md)). | none (opens a folder on screen) |
+| `nearby` | "Sushi near me", "I'm at Union Square, any pharmacy open now?" | Finds places around you on OpenStreetMap (by cuisine or type), closest first, with distance, walking time, whether they're open now, and Directions / Website / Call buttons. Needs your location: tap the pin, share it in Telegram, or say where you are. | none |
+| `directions` | "Directions to the first one", "How do I get to the Ferry Building by bike?" | Distance, time and the first turns on foot, by bike or by car, plus a map link for turn-by-turn. Buses and trains: the link opens transit directions. | none |
+| `booking` | "Book a table at number 2 for 4 at 8pm", "Book tickets for Dune tomorrow at 7pm" | Gets it ready: place, time, party size, booking page and phone. **You** finish the booking and pay; Chief never does. Approve and it goes on your calendar. | proposes `create_event` |
 | `general` | anything else | With a model configured, answers using read-only lookups; any change must be proposed. Without a model, Chief just lists what it can do. | proposes `create_event`, `patch_event`, `create_draft` |
 
 Everything runs from the heartbeat or from a spoken or typed request through one intent mapper. `open_brief` and `files` use
@@ -69,7 +80,7 @@ Stated precisely, with what has been verified.
 
 | Sponsor tool | What it does in Chief | Verified? |
 |---|---|---|
-| **Composio** | Gives `LiveTools` (`chief/tools/live.py`) its Google Calendar and Gmail tools through the `composio` Python SDK (0.28+, sessions API). Reads and drafts use one Composio session; approved writes use a **second** session with its own enable list, so the session used for reading cannot send or edit. `chief/tools/composio_client.py` prints the connect links for the demo account. | Call signatures checked against the SDK source and docs. **Never run with a real Composio key.** The shape of the data each tool returns is unverified, and the first live run may need small fixes (the list is in [docs/live-tools.md](docs/live-tools.md)). |
+| **Composio** | Gives `LiveTools` (`chief/tools/live.py`) its Google Calendar and Gmail tools through the `composio` Python SDK (0.28+, sessions API). Reads and drafts use one Composio session; approved writes use a **second** session with its own enable list, so the session used for reading cannot send or edit. `chief/tools/composio_client.py` prints the connect links for the demo account. | **Run with a real Composio key on a real account (2026-11-07)**: reading Gmail, creating and undoing a calendar event, and sending an email work; see the Status table below for what is not yet tried (editing an event, drafts, thread replies). |
 | **Parallel** | `search_web` calls Parallel Search in `fast` mode, optionally limited to chosen domains (`CHIEF_SEARCH_DOMAINS`, and caltrain.com / 511.org for trips). It backs `trip_planner` and the company background in `meeting_prep`; only a company name is sent, never an email address. | Parameters checked against the `parallel-web` source and docs. **Never run with a real Parallel key.** |
 | **Open models** | Any OpenAI-compatible endpoint (`CHIEF_LLM_BASE_URL`, `CHIEF_LLM_MODEL`, `CHIEF_LLM_API_KEY`): organizer credits, Together, Groq, Fireworks, or a local Ollama. Skills compute their findings in plain code and use the model only to **phrase** them, to pick a skill when no trigger phrase matches, and inside the `general` skill's bounded tool loop. Speech-to-text is Whisper large-v3-turbo on any OpenAI-compatible host (Groq by default). | **No model has been called.** In mock mode the model is switched off entirely, so every mock result is deterministic text. Tool-calling quality of a specific open model is unmeasured; [docs/general-assistant.md](docs/general-assistant.md) has the benchmark to run. |
 | **Cline** | **Not part of Chief at runtime; nothing in this repository calls Cline.** What exists is the thing that makes Cline useful here: a skill is one file with a three-field-plus-tools contract, and the safety rules are enforced by tests, so a coding agent can add a skill and the test run tells you whether it kept the rules. [docs/writing-skills.md](docs/writing-skills.md) has a prompt for that. | Prompt **not yet tried with Cline.** An optional Cline CLI skill (for example PR triage) is on the [roadmap](#roadmap), not built. |
@@ -142,34 +153,25 @@ on the model behaving.
 
 ## Quickstart (mock mode, no accounts)
 
-Needs Python 3.11+. The commands below were run from this repository on Windows with the project's `.venv`.
+Needs Python 3.11+. One path for every system: the commands use `.venv/Scripts/python`, which works in PowerShell and
+Git Bash on Windows; on macOS / Linux write `.venv/bin/python` instead.
 
-```powershell
+```bash
+git clone https://github.com/SriVarshini09/chief && cd chief
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.venv\Scripts\python.exe -m pytest -q                 # the safety rules and every skill
-.venv\Scripts\python.exe -m chief skills              # lists the skills
-.venv\Scripts\python.exe -m chief run --once          # one heartbeat on seeded data: shows the audit proposal, changes nothing
-.venv\Scripts\python.exe -m chief run --once --approve   # ...and applies it
+.venv/Scripts/python -m pip install -e ".[dev,web]"   # tests + the web page, about a minute
+.venv/Scripts/python -m pytest -q                     # the safety rules and every skill
+.venv/Scripts/python -m chief skills                  # lists the skills
+.venv/Scripts/python -m chief run --once              # one check-in on sample data: shows the audit card
+.venv/Scripts/python -m chief run --once --approve    # ...and applies it
+.venv/Scripts/python -m chief web                     # the Garden dashboard and phone page: open the link it prints
 ```
 
-macOS / Linux: use `.venv/bin/python` instead of `.venv\Scripts\python.exe`.
-
-Pin the clock so the output matches the docs (the seeded calendar is generated relative to "now"):
-
-```powershell
-$env:CHIEF_NOW = "2026-10-21T08:00:00"      # bash: CHIEF_NOW=2026-10-21T08:00:00 python -m chief run --once
-```
-
-State is written to `.chief/`. Chief proposes each situation once and remembers your decision, so after `--approve` a second run says
-nothing new: `python -m chief reset` clears it. The `dev` extra is enough for the tests and the commands above; the voice page and the
-Stage also need `uvicorn`, which comes with the `live` extra. To try them in mock mode, install it and open the printed link, then type
-the demo phrases into the box:
-
-```powershell
-.venv\Scripts\python.exe -m pip install -e ".[live]"
-.venv\Scripts\python.exe -m chief web --port 8765     # prints http://localhost:8765/?token=...   (Stage: /stage?token=...)
-```
+`run --once` asks *Approve this?* in a terminal: **y** applies it, **n** skips it for good, and **Enter** decides later
+(nothing is remembered, so the `--approve` line still finds it). State is written to `.chief/`. Chief proposes each
+situation once and remembers your decision, so after `--approve` a second run says nothing new: `python -m chief reset`
+clears it. The sample calendar and mail follow today's date. To get exactly the output shown in the docs, pin the clock
+first: `CHIEF_NOW=2026-10-21T08:00:00` (PowerShell: `$env:CHIEF_NOW = "2026-10-21T08:00:00"`).
 
 For the demo-day sequence (`doctor`, `demo`, `record-demo`) and the live setup see the guides: [demo-day](docs/demo-day.md),
 [live-tools](docs/live-tools.md), [slack-setup](docs/slack-setup.md), [phone-setup](docs/phone-setup.md),
@@ -233,12 +235,10 @@ Facts as of the last check of this repository, with how each was established. "M
 | Cline | **Not integrated.** |
 | Sleep data | **Generated sample**, not real health data. Samsung Health has no public cloud API; real export import is future work. |
 
-**Test run:** `python -m pytest -q` gave **608 passed, 2 skipped** on 2026-10-19 (Python 3.13.7, Windows 11), in the repo's `.venv` and again in a fresh
-virtual environment built from a copy of the repository with `pip install -e ".[dev]"`. The skips are environmental: `tzdata` is not installed
-(it comes with the `live` extra) and this Windows account cannot create symlinks. The number grows as tests are added, so re-run it
-rather than trusting this line. The `run --once`, `run --once --approve` and `skills` commands were run in both environments; `chief web` was
-started in the fresh environment after `pip install -e ".[live]"` and answered `/`, `/stage`, `/ask`, `/status` and `/stage/events` (401 without the token).
-It needs the `live` extra because `uvicorn` is not in `dev`.
+**Test run:** `python -m pytest -q` gave **948 passed, 1 skipped** on 2026-11-07 (Python 3.13, Windows 11) in the repo's `.venv`. A fresh
+clone installed by following this README was also checked on 2026-11-07. Skips are environmental (for example this Windows account
+cannot create symlinks). The number grows as tests are added, so re-run it rather than trusting this line. `chief web` needs only the
+`web` extra.
 
 When you run it for real, the first live run needs the checklist in [docs/live-tools.md](docs/live-tools.md); update this table
 from what you observe, not what the code intends.

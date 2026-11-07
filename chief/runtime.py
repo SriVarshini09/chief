@@ -13,6 +13,7 @@ from chief.gate import ApprovalGate
 from chief.llm import LLM
 from chief.memory import Memory
 from chief.models import Proposal
+from chief.places import Whereabouts
 from chief.skills import Context, load_skills
 from chief.tools import ScopedTools, Tools, get_tools
 from chief.tools.recording import RecordingTools
@@ -20,7 +21,9 @@ from chief.tools.recording import RecordingTools
 
 def format_card(p: Proposal) -> str:
     lines = [f"[{p.skill}] {p.summary}", ""]
-    lines += [f"  - {a.plain()}" for a in p.actions]
+    lines += ["  - " + a.plain().replace("\n", "\n      ") for a in p.actions]  # notes and email text stay under their item
+    lines += [f"  {i.get('title', '')}" + (f": {i['note']}" if i.get("note") else "") for i in p.items]
+    lines += [f"  {link['label']}: {link['url']}" for link in p.links]
     lines += [f"  source: {s}" for s in p.sources]
     lines.append(f"  (proposal {p.id}: approve or skip)" if p.actions else f"  (proposal {p.id}: read-only, nothing to approve)")
     return "\n".join(lines)
@@ -42,6 +45,7 @@ class Runtime:
         self.llm = llm or LLM(cfg)
         self.memory = Memory(cfg.state_dir)
         self.conversation = Conversation()  # short-term context for follow-ups (chief/conversation.py)
+        self.where = Whereabouts()  # your shared location and the last places listed: memory only, never saved
         self.skills = load_skills()
         self.gate = ApprovalGate(
             self.tools, self.memory, self.skills, notify or (lambda p: print(format_card(p))), bus=self.bus,
@@ -57,7 +61,7 @@ class Runtime:
         now = now or self.now()
         skill = self.skills[name]
         self.bus.emit("step", f"Running {name}", detail={"skill": name, "request": request})
-        ctx = Context(ScopedTools(self.tools, skill.allowed_tools, skill.name), self.llm, self.memory, now, request, self.conversation.history())
+        ctx = Context(ScopedTools(self.tools, skill.allowed_tools, skill.name), self.llm, self.memory, now, request, self.conversation.history(), self.where)
         proposal = skill.run(ctx)
         if proposal is None:
             self.memory.log("no_reply", skill=name)

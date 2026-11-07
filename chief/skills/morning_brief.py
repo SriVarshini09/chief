@@ -7,7 +7,7 @@ and you can ask for it at any time.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from chief.models import Event, Proposal, clock
 from chief.skills.base import Context, Skill
@@ -18,10 +18,15 @@ def _plural(count: int, word: str) -> str:
     return f"{count} {word}" if count == 1 else f"{count} {word}s"
 
 
-def _day_line(events: list[Event]) -> str:
+def _day_line(events: list[Event], now: datetime | None = None) -> str:
     if not events:
         return "No meetings today."
     first, last = events[0], max(events, key=lambda e: e.end)
+    ahead = [e for e in events if now is None or e.end > now]
+    if not ahead:
+        return f"{_plural(len(events), 'meeting')} today, all done. The last ended at {clock(last.end)}."
+    if ahead[0] is not first:  # the day is under way: what's next, not what already happened
+        return f"{_plural(len(events), 'meeting')}. Next: {ahead[0].title} at {clock(ahead[0].start)}. Done by {clock(last.end)}."
     return f"{_plural(len(events), 'meeting')}. First: {first.title} at {clock(first.start)}. Done by {clock(last.end)}."
 
 
@@ -33,7 +38,7 @@ def run(ctx: Context) -> Proposal:
 
     hour = ctx.now.hour
     hello = "Good morning" if hour < 12 else "Good afternoon" if hour < 17 else "Good evening"
-    lines = [f"{hello}. Here's your {ctx.now:%A}.", _day_line(timed)]
+    lines = [f"{hello}. Here's your {ctx.now:%A}.", _day_line(timed, ctx.now)]
     for label, kind in (("To answer", "reply"), ("Deadlines", "deadline")):
         found = [i for i in items if i.kind == kind]
         if found:

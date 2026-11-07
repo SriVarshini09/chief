@@ -347,6 +347,7 @@ class LiveTools(Tools):
                     args["timezone"] = w["timezone"]
             else:
                 raise ValueError(f"patch_event: unsupported field '{name}'")
+        args["send_updates"] = "none"  # Chief never emails your guests; the card says so
         self.gateway.execute("write", "GOOGLECALENDAR_PATCH_EVENT", args)
         return {"id": event_id, "updated": True}
 
@@ -369,7 +370,7 @@ class LiveTools(Tools):
 
     def delete_event(self, event_id: str) -> dict:
         self.gateway.execute(
-            "write", "GOOGLECALENDAR_DELETE_EVENT", {"event_id": event_id, "calendar_id": self.calendar_id}
+            "write", "GOOGLECALENDAR_DELETE_EVENT", {"event_id": event_id, "calendar_id": self.calendar_id, "send_updates": "none"}
         )
         return {"deleted": True}
 
