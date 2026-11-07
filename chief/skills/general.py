@@ -309,6 +309,7 @@ def answer(ctx_or_runtime, text: str) -> Proposal | None:
 
 
 SKILL = Skill(
+    label="Suggestion",
     name="general",
     description="Answers open-ended requests using read-only lookups; any change is proposed for your approval.",
     run=run,

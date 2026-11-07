@@ -27,21 +27,40 @@ def _by_day(events: list[Event]) -> dict[date, list[Event]]:
     return days
 
 
+def _calm_week(ctx: Context, now: datetime) -> Proposal | None:
+    """A check-in stays silent. If you asked, you get an answer."""
+    if not ctx.request:
+        return None
+    upcoming = _by_day(ctx.tools.list_events(now, now + timedelta(days=7)))
+    total = sum(len(evs) for evs in upcoming.values())
+    if not total:
+        summary = "Your next seven days have no meetings. Nothing needs changing."
+    else:
+        busiest = max(upcoming, key=lambda d: len(upcoming[d]))
+        meetings = "meeting" if total == 1 else "meetings"
+        summary = f"Your next seven days look fine: {total} {meetings}, and {busiest:%A} is the busiest with {len(upcoming[busiest])}. Nothing needs changing."
+    return Proposal(skill="audit", summary=summary, actions=[], key=f"audit:calm:{now.date()}")
+
+
 def run(ctx: Context) -> Proposal | None:
     now: datetime = ctx.now
     past = _by_day(ctx.tools.list_events(now - timedelta(days=14), now))
-    sleep = {s.day: s.hours for s in ctx.tools.read_health(14)}
+    try:
+        sleep = {s.day: s.hours for s in ctx.tools.read_health(14)}
+        has_sleep = True
+    except Exception:  # most people have no sleep file: the calendar alone can still spot a heavy day
+        sleep, has_sleep = {}, False
 
     heavy = [d for d, evs in past.items() if len(evs) >= HEAVY_MEETINGS]
     measured = [d for d in heavy if d + timedelta(days=1) in sleep]
     short = [d for d in measured if sleep[d + timedelta(days=1)] < SHORT_SLEEP_H]
-    if len(measured) < MIN_EVIDENCE or len(short) / len(measured) < MIN_RATE:
-        return None  # nothing worth saying
+    if has_sleep and (len(measured) < MIN_EVIDENCE or len(short) / len(measured) < MIN_RATE):
+        return _calm_week(ctx, now)  # nothing worth changing
 
     upcoming = _by_day(ctx.tools.list_events(now, now + timedelta(days=7)))
     target = next((d for d in sorted(upcoming) if len(upcoming[d]) >= HEAVY_MEETINGS), None)
     if target is None:
-        return None
+        return _calm_week(ctx, now)
 
     events = sorted(upcoming[target], key=lambda e: e.start)
     asyncable = [e for e in events if any(w in e.title.lower() for w in ASYNC_WORDS)][:2]
@@ -82,12 +101,12 @@ def run(ctx: Context) -> Proposal | None:
             )
         )
     if not actions:
-        return None
+        return _calm_week(ctx, now)
 
     day_name = target.strftime("%A")
+    why = f"You slept under {SHORT_SLEEP_H:g} hours after {len(short)} of your last {len(measured)} heavy meeting days. " if has_sleep else ""
     fallback = (
-        f"You slept under {SHORT_SLEEP_H:g} hours after {len(short)} of your last {len(measured)} heavy meeting days. "
-        f"{day_name} has {len(events)} meetings. I can mark {len(asyncable)} as async, "
+        f"{why}{day_name} has {len(events)} meetings. I can mark {len(asyncable)} as async, "
         f"{'make one a walking call, ' if walk else ''}and protect a {FOCUS_MINUTES}-minute focus block. Approve?"
     )
     summary = ctx.llm.complete(
@@ -99,6 +118,7 @@ def run(ctx: Context) -> Proposal | None:
 
 
 SKILL = Skill(
+    label="Your week",
     name="audit",
     description="Finds whether heavy meeting days cost you sleep, then proposes a lighter next heavy day.",
     triggers=["how's my week", "how is my week", "why am i so tired", "audit"],

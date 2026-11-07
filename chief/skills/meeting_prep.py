@@ -150,6 +150,7 @@ def run(ctx: Context) -> Proposal | None:
 
 
 SKILL = Skill(
+    label="Meeting prep",
     name="meeting_prep",
     description="One-page brief for your next meeting with an outside attendee: past threads plus web background.",
     triggers=["meeting prep", "prep me", "prepare me for", "prep for my next", "next meeting"],

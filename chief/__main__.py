@@ -23,8 +23,13 @@ def _serve_web(rt: Runtime, host: str, port: int) -> int:
         return 1
     token = os.getenv("CHIEF_WEB_TOKEN") or secrets.token_urlsafe(16)
     print(f"Chief voice page ({rt.cfg.mode} mode): http://localhost:{port}/?token={token}")
+    print(f"Garden dashboard: http://localhost:{port}/dashboard?token={token}")
     if not os.getenv("CHIEF_WEB_TOKEN"):
         print("(CHIEF_WEB_TOKEN is not set, so that token is random for this run.)")
+    from chief.telegram_app import start_with_web
+
+    if start_with_web(rt):
+        print("Telegram is on too: approvals, check-ins and the morning brief.")
     serve(rt, token, host, port)
     return 0
 
@@ -44,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("skills", help="list loaded skills")
     sub.add_parser("reset", help="forget past decisions and the activity log")
     sub.add_parser("slack", help="approve proposals from Slack (Socket Mode) and run the heartbeat")
+    sub.add_parser("telegram", help="run Chief as a Telegram bot: approvals, notifications and the morning brief")
     sub.add_parser("show-login", help="open the dedicated browser profile once to sign into the TEST Google account")
     sub.add_parser("show-layout", help="list your monitors and suggest where to put the real windows")
     demo = sub.add_parser("show-demo", help="replay canned events so you can watch the real windows open")
@@ -95,6 +101,11 @@ def main(argv: list[str] | None = None) -> int:
         from chief.slack_app import run_slack
 
         return run_slack(cfg)
+
+    if args.cmd == "telegram":
+        from chief.telegram_app import run_telegram
+
+        return run_telegram(cfg)
 
     if getattr(args, "now", None):
         cfg.now = datetime.fromisoformat(args.now)

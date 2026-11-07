@@ -13,18 +13,32 @@ import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import quote
 
 import httpx
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from chief.dashboard import snapshot
+from chief.gate import results_text
 from chief.intent import handle_utterance
 from chief.models import Proposal
 from chief.runtime import Runtime
 
 PAGE = Path(__file__).parent / "index.html"
 STAGE_PAGE = Path(__file__).parent / "stage.html"
+DASHBOARD_PAGE = Path(__file__).parent / "dashboard.html"
+WORLD_SCRIPT = Path(__file__).parent / "world.js"
+FOOTAGE = Path(__file__).parent / "footage"
+FOOTAGE_FILES = {
+    "daisies.mp4": "video/mp4",
+    "daisies.jpg": "image/jpeg",
+    "sunset-clouds.mp4": "video/mp4",
+    "sunset-clouds.jpg": "image/jpeg",
+}
+ICONS = Path(__file__).parent / "icons"
+ICON_NAMES = {"icon-192.png", "icon-512.png", "apple-touch-icon.png"}
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 MAX_TEXT_CHARS = 2000
 
@@ -71,12 +85,15 @@ def _extension(content_type: str) -> str:
     return "webm"
 
 
-def proposal_json(p: Proposal) -> dict:
+def proposal_json(p: Proposal, rt: Runtime) -> dict:
+    skill = rt.skills.get(p.skill)
     return {
         "id": p.id,
         "skill": p.skill,
+        "label": (skill.label if skill else "") or p.skill,
         "summary": p.summary,
-        "actions": [a.describe() for a in p.actions],
+        "plain": [a.plain() for a in p.actions],  # what the person reads before approving
+        "actions": [a.describe() for a in p.actions],  # the exact calls, behind "Exact details"
         "sources": list(p.sources),
     }
 
@@ -85,7 +102,7 @@ class WebState:
     """What /status reports: the latest steps and spoken reply, plus a busy flag."""
 
     def __init__(self) -> None:
-        self.lock = threading.Lock()  # one request touches the runtime at a time
+        self.lock: threading.RLock | None = None  # shared with Telegram: one turn touches the runtime at a time
         self.busy = False
         self.heard = ""
         self.say = ""
@@ -98,6 +115,7 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
         raise ValueError("CHIEF_WEB_TOKEN is required: this page can approve actions on your accounts")
     stt = transcriber if transcriber is not None else WhisperTranscriber.from_env()
     state = WebState()
+    state.lock = rt.turn_lock
     app = FastAPI(title="Chief", docs_url=None, redoc_url=None, openapi_url=None)
 
     def require_token(request: Request) -> None:
@@ -117,6 +135,37 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
     @app.get("/", dependencies=auth)
     def page() -> FileResponse:
         return FileResponse(PAGE, media_type="text/html", headers={"Cache-Control": "no-store"})
+
+    @app.get("/manifest.webmanifest", dependencies=auth)
+    def manifest() -> JSONResponse:
+        """What "Add to Home Screen" reads. It holds the token because the installed app opens without
+        a link to click, so treat an installed phone like the private link itself."""
+        query = f"?token={quote(token, safe='')}"
+        return JSONResponse(
+            {
+                "name": "Chief",
+                "short_name": "Chief",
+                "description": "Your personal agent. It changes nothing until you approve.",
+                "id": "/",
+                "start_url": f"/{query}",
+                "scope": "/",
+                "display": "standalone",
+                "background_color": "#0f1115",
+                "theme_color": "#0f1115",
+                "icons": [
+                    {"src": f"/icons/icon-{size}.png{query}", "sizes": f"{size}x{size}", "type": "image/png", "purpose": "any maskable"}
+                    for size in (192, 512)
+                ],
+            },
+            media_type="application/manifest+json",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/icons/{name}", dependencies=auth)
+    def icon(name: str) -> FileResponse:
+        if name not in ICON_NAMES:
+            raise HTTPException(404, "no such icon")
+        return FileResponse(ICONS / name, media_type="image/png")
 
     @app.post("/stt", dependencies=auth)
     async def speech_to_text(audio: UploadFile = File(...)) -> dict:
@@ -153,7 +202,7 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
             return {
                 "say": out["say"],
                 "steps": list(out["steps"]),
-                "proposal": proposal_json(proposal) if proposal else None,
+                "proposal": proposal_json(proposal, rt) if proposal else None,
             }
 
     def decide(proposal_id: str, approve: bool) -> dict:
@@ -163,10 +212,7 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
             if approve:
                 results = rt.gate.approve(proposal_id)
                 failed = [r for r in results if "error" in r]
-                if failed:
-                    say, steps = f"That didn't go through: {failed[0]['error']}", ["Applying changes", "Failed"]
-                else:
-                    say, steps = f"Done. {len(results)} change(s) made.", ["Applying changes", "Done"]
+                say, steps = results_text(results), ["Applying changes", "Failed" if failed else "Done"]
             else:
                 rt.gate.skip(proposal_id)
                 results, say, steps = [], "Okay, skipped.", ["Skipped"]
@@ -181,18 +227,49 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
     def skip(proposal_id: str) -> dict:
         return decide(proposal_id, False)
 
+    @app.post("/undo/{mark}", dependencies=auth)
+    def undo(mark: str) -> dict:
+        with state.lock:
+            say = rt.gate.undo(mark)
+            if say is None:
+                raise HTTPException(409, "That can no longer be undone.")
+            reply(say, ["Undone"])
+            return {"say": say}
+
     @app.get("/status", dependencies=auth)
     def status() -> dict:
         return {
+            "undo": rt.gate.undo_state(),
             "mode": rt.cfg.mode,
             "busy": state.busy,
             "heard": state.heard,
             "say": state.say,
             "seq": state.seq,
             "steps": state.steps,
-            "pending": [proposal_json(p) for p in list(rt.gate.pending.values())],
+            "pending": [proposal_json(p, rt) for p in list(rt.gate.pending.values())],
             "stt": getattr(stt, "enabled", True),
         }
+
+    # ---- the garden dashboard: today, the week, mail and approvals in one view --------------------
+
+    @app.get("/dashboard", dependencies=auth)
+    def dashboard_page() -> FileResponse:
+        return FileResponse(DASHBOARD_PAGE, media_type="text/html", headers={"Cache-Control": "no-store"})
+
+    @app.get("/dashboard/world.js", dependencies=auth)
+    def dashboard_world() -> FileResponse:
+        return FileResponse(WORLD_SCRIPT, media_type="text/javascript", headers={"Cache-Control": "no-store"})
+
+    @app.get("/dashboard/footage/{name}", dependencies=auth)
+    def dashboard_footage(name: str) -> FileResponse:
+        """FileResponse answers Range requests, which iPhones need before they will play a video."""
+        if name not in FOOTAGE_FILES:
+            raise HTTPException(404, "no such footage")
+        return FileResponse(FOOTAGE / name, media_type=FOOTAGE_FILES[name], headers={"Cache-Control": "private, max-age=86400"})
+
+    @app.get("/dashboard/data", dependencies=auth)
+    def dashboard_data() -> dict:
+        return snapshot(rt)
 
     # ---- the Stage: a big-screen view of everything Chief does -----------------------------------
 
@@ -207,7 +284,7 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
             "last_seq": rt.bus.last_seq,  # lower than the page's cursor means the server restarted
             "busy": state.busy,
             "mode": rt.cfg.mode,
-            "pending": [proposal_json(p) for p in list(rt.gate.pending.values())],
+            "pending": [proposal_json(p, rt) for p in list(rt.gate.pending.values())],
         }
 
     @app.get("/stage/calendar", dependencies=auth)

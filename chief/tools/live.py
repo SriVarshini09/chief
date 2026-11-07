@@ -53,6 +53,17 @@ _PATCH_FIELDS = {"summary": "summary", "title": "summary", "description": "descr
 _MAX_PAGES = 4
 
 
+BULK_LABELS = {"CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS"}  # not Updates: real people and bills land there
+
+
+def _plain_text(text: str) -> str:
+    """The words of a message. Markup and links go first: a "?" inside a URL is not a question."""
+    text = re.sub(r"(?is)<(style|script)\b.*?</\1>", " ", text)
+    text = re.sub(r"(?s)<[a-zA-Z!/][^<>]{0,500}>", " ", text)
+    text = re.sub(r"(?i)\b(?:https?://|www\.)\S+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _find(data: Any, key: str, depth: int = 4) -> Any:
     """First value stored under `key`, looking through nested dicts (Composio wraps data inconsistently)."""
     if depth < 0 or not isinstance(data, dict):
@@ -211,14 +222,17 @@ class LiveTools(Tools):
     def _email(self, m: dict) -> Email:
         body = _first(m, "messageText", "snippet", "body") or (m.get("preview") or {}).get("body") or ""
         labels = m.get("labelIds")
+        headers = (m.get("payload") or {}).get("headers") or []
+        unsubscribe = any(str(h.get("name")).lower() == "list-unsubscribe" for h in headers if isinstance(h, dict))
         return Email(
             id=str(_first(m, "messageId", "id") or ""),
             thread_id=str(_first(m, "threadId", "thread_id") or ""),
             sender=str(_first(m, "sender", "from") or ""),
             subject=str(m.get("subject") or (m.get("preview") or {}).get("subject") or ""),
-            snippet=re.sub(r"\s+", " ", str(body)).strip()[:500],
+            snippet=_plain_text(str(body))[:500],
             received=self._parse_dt(_first(m, "messageTimestamp", "internalDate", "date")) or datetime(1970, 1, 1),
             unread=("UNREAD" in labels) if isinstance(labels, list) else True,
+            bulk=unsubscribe or (isinstance(labels, list) and bool(BULK_LABELS & set(labels))),
         )
 
     def fetch_emails(self, query: str = "", max_results: int = 10) -> list[Email]:

@@ -178,6 +178,7 @@ def run(ctx: Context) -> Proposal | None:
 
 
 SKILL = Skill(
+    label="Trip",
     name="trip_planner",
     description="Plans a Caltrain trip from your calendar and a pinned-source search, plus a boba stop. Never invents train times.",
     triggers=["caltrain", "head to palo alto", "heading to palo alto", "boba", "plan my trip", "plan a trip"],

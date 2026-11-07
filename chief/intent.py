@@ -246,8 +246,12 @@ def _approve(rt: Runtime, ids: list[str]) -> dict:
         say, steps = f"That didn't go through: {errors[0]}", ["Applying changes", "Failed"]
     elif count > 1:
         say, steps = f"Done. {changes} change(s) made across {count} proposals.", ["Applying changes", "Done"]
+    elif rt.gate.held:
+        say, steps = f"Sending in {rt.gate.send_delay:g} seconds. Say undo to stop it.", ["Holding the email", "Sending soon"]
     else:
         say, steps = f"Done. {changes} change(s) made.", ["Applying changes", "Done"]
+        if rt.gate.last_undo:
+            say += " Say undo to reverse it."
     note = pending_note(rt)
     return _result(say + (" " + note if note else ""), steps=steps)
 
@@ -326,10 +330,14 @@ def _handle(rt: Runtime, text: str) -> dict:
     if pending and is_(SKIP_ALL):
         last = set(rt.conversation.last_proposal_ids)
         return _skip(rt, [p.id for p in pending if p.id in last] or [pending[-1].id])
+    if rt.gate.held and (is_(UNDO) or is_({"never mind", "cancel", "stop", "dont send it", "don't send it"})):
+        return _result(rt.gate.undo() or "It has already gone.")
     if pending and is_(UNDO):
-        return _skip(rt, [pending[-1].id])  # only something still pending can be undone
+        return _skip(rt, [pending[-1].id])
+    if is_(UNDO) and rt.gate.last_undo:
+        return _result(rt.gate.undo() or "There is nothing to undo.")
     if not pending and (is_(UNDO) or is_({"never mind", "cancel"})):
-        return _result("Nothing is waiting for approval. I can't undo changes that were already made.")
+        return _result("Nothing is waiting for approval, and there is nothing to undo.")
 
     follow = resolve(rt, said)
     if follow is not None:
@@ -350,5 +358,10 @@ def _handle(rt: Runtime, text: str) -> dict:
     if plan:
         return _run_tasks(rt, plan)
 
-    menu = ", ".join(s.name for s in rt.skills.values())
-    return _result(f"I can help with: {menu}. What would you like?")
+    say = (
+        "I can help with your inbox, your week, email replies, meeting prep, trips, a morning brief and your files. "
+        "Try: what's in my inbox?"
+    )
+    if not rt.llm.enabled:
+        say += " Other questions need an AI model connected."
+    return _result(say)

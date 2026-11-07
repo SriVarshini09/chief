@@ -182,6 +182,7 @@ def run(ctx: Context) -> Proposal | None:
 
 
 SKILL = Skill(
+    label="Email reply",
     name="draft_reply",
     description="Drafts a reply to mail that needs an answer and saves it in Gmail. Sending waits for your approval.",
     triggers=["draft a reply", "draft replies", "draft reply", "write back to", "reply to my email", "reply to", "respond to"],

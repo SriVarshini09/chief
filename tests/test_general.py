@@ -227,7 +227,7 @@ def test_without_an_llm_unknown_requests_still_list_skills(rt):
     assert not rt.llm.enabled
     out = handle_utterance(rt, "what's the capital of France")
     assert "I can help with" in out["say"] and out["proposal"] is None
-    assert "general" in out["say"]  # listed like any skill, but never run without a model
+    assert "AI model" in out["say"]  # says why it cannot answer
     assert rt.gate.pending == {}
 
 

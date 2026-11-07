@@ -126,7 +126,7 @@ def connect_main(argv: list[str] | None = None, gateway_factory: Callable[[], Co
                 print(f"{name:16} {'connected' if ok else 'NOT connected (run: connect ' + name + ')'}")
         else:
             print(f"Open this link in a browser signed in to the Google test account:\n{gateway.connect_link(args.toolkit)}")
-    except LiveToolError as exc:
+    except Exception as exc:  # also the SDK's own errors, such as a rejected key or a network failure
         print(f"error: {exc}")
         return 1
     return 0

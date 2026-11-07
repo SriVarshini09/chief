@@ -43,3 +43,4 @@ class Skill:
     allowed_tools: set[str] = field(default_factory=set)
     propose_tools: set[str] = field(default_factory=set)
     heartbeat: bool = True  # also run on the scheduled check-in
+    label: str = ""  # title on approval cards; the skill's name is used if this is empty

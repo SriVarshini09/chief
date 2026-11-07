@@ -38,7 +38,7 @@ def _body_blocks(p: Proposal) -> list[dict]:
         {"type": "section", "text": {"type": "mrkdwn", "text": _clip(f"*[{_esc(p.skill)}]* {_esc(p.summary)}")}}
     ]
     if p.actions:
-        lines = [f"• `{_esc(a.describe()).replace('`', chr(39))}`" for a in p.actions]
+        lines = [f"• {_esc(a.plain())}" for a in p.actions]
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": _clip("*Will do if approved:*\n" + "\n".join(lines))}})
     if p.sources:
         src = "\n".join(f"• {_esc(s)}" for s in p.sources)
@@ -90,7 +90,7 @@ def _results_status(results: list[dict]) -> str:
         return f":white_check_mark: *Approved.* {len(results)} action(s) ran."
     failed = "; ".join(f"`{_esc(r['tool'])}`: {_esc(str(r['error']))}" for r in errors)
     ran = len(results) - len(errors)
-    return f":warning: *Approved, but an action failed* ({ran} ran before it). {failed}\nNothing was recorded; Chief may propose it again."
+    return f":warning: *Approved, but an action failed* ({ran} ran before it). {failed}\nThe rest is waiting for a retry or a skip."
 
 
 def _update(client: Any, body: dict, blocks: list[dict], text: str) -> None:

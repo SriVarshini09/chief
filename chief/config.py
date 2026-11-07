@@ -20,6 +20,22 @@ def _flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _hour(value: str | None, default: int) -> int | None:
+    """An hour of the day. "off" turns the feature off; anything unreadable means the default."""
+    text = (value or "").strip().lower()
+    if text in ("off", "none", "no"):
+        return None
+    return int(text) if text.isdigit() and int(text) < 24 else default
+
+
+def _delay(value: str | None, default: float) -> float:
+    """Seconds, where 0 means no delay. Anything unreadable means the default."""
+    try:
+        return max(0.0, float(value)) if value and value.strip() else default
+    except ValueError:
+        return default
+
+
 def _seconds(value: str | None, default: float) -> float:
     try:
         return max(0.5, float(value)) if value else default
@@ -35,6 +51,8 @@ class Config:
     heartbeat_hours: float = 4.0
     active_start: int = 8  # local hour, inclusive
     active_end: int = 22  # local hour, exclusive
+    brief_hour: int | None = 8  # local hour of the Telegram morning brief; None turns it off
+    send_delay: float = 0  # seconds an approved email waits before it goes, so it can be stopped
     llm_base_url: str | None = None
     llm_model: str | None = None
     llm_api_key: str | None = None
@@ -72,6 +90,8 @@ class Config:
             show_dry_run=_flag("CHIEF_SHOW_DRY_RUN"),
             local_roots=tuple(r.strip().strip('"') for r in re.split(r"[;\r\n]+", os.getenv("CHIEF_LOCAL_ROOTS", "")) if r.strip().strip('"')),
             live_timeout=_seconds(os.getenv("CHIEF_LIVE_TIMEOUT"), 6.0),
+            brief_hour=_hour(os.getenv("CHIEF_BRIEF_HOUR"), 8),
+            send_delay=_delay(os.getenv("CHIEF_SEND_DELAY"), 30.0),
             cache_file=Path(os.environ["CHIEF_DEMO_CACHE"]) if os.getenv("CHIEF_DEMO_CACHE") else None,
             now=datetime.fromisoformat(pinned) if pinned else None,
             llm_base_url=os.getenv("CHIEF_LLM_BASE_URL") or None,

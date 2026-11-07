@@ -24,11 +24,13 @@ The owner's priorities: a demo that works live, honesty about what is real vs mo
 - A manual safety scan found no `shell=True`, `eval`/`exec`, `innerHTML`, or secret printing; subprocess calls take argument lists only.
 
 **NOT verified. Never run against anything real (no keys existed):**
-- Composio Calendar and Gmail (`chief/tools/live.py`, `chief/tools/composio_client.py`). The shape of Composio's returned data is
-  an assumption (see the docstring at the top of `live.py`); a mismatch shows up as empty lists. This is the biggest risk.
+- Composio writes other than `create_event` and `delete_event`: `patch_event`, `create_draft` and `send_email` have never run for real.
+  Gmail reads and calendar reads, creates and undo were verified on a real account on 2026-11-07 (see the README status table).
+  The Composio key needs write access for `session_management`, or every call fails with a 403.
 - Parallel web search, Slack Socket Mode (`slack-bolt` is not even installed in the venv), Whisper speech-to-text (Groq),
   the Cline API as the model host, the Cloudflare tunnel, a real phone (Samsung/Chrome), the real-window layer with a real Google
   login, and `seed_demo_account.py --apply` (dry run only).
+- Telegram: `chief/telegram_app.py` has only run against a fake API (`docs/telegram-setup.md`).
 - Tool calling on any open model. The scripted demo does not need a model; only the open-ended `general` skill and optional phrasing do.
 - Git: the first commit (`59730c1`, 2026-10-19) is the first time any of this was under version control; everything before it was built in a
   plain folder.
@@ -45,7 +47,7 @@ python -m venv .venv
 Useful for repeatable runs: `CHIEF_NOW=2026-10-21T08:00:00`, `CHIEF_STATE_DIR=<temp dir>`, `CHIEF_WEB_TOKEN=demo123`.
 The Stage is at `/stage?token=...`; the phone page is `/?token=...`.
 
-CLI subcommands: `run`, `web`, `skills`, `reset`, `doctor`, `demo`, `record-demo`, `show-login`, `show-demo`, `show-layout`, `slack`.
+CLI subcommands: `run`, `web`, `skills`, `reset`, `doctor`, `demo`, `record-demo`, `show-login`, `show-demo`, `show-layout`, `slack`, `telegram`.
 `python -m chief doctor` prints what is missing (env var names only, never values). `python -m chief demo` is the one-command stage launcher.
 
 Modes (`CHIEF_MODE`): `mock` (seeded data), `live` (real services), `demo` (live, falling back to the recorded cache on failure,
@@ -65,9 +67,9 @@ Diagram: `docs/chief-architecture.excalidraw` (regenerate with `scripts/make_dia
 |---|---|
 | Core | `chief/runtime.py` (wiring), `gate.py` (approval gate), `memory.py`, `activity.py` (event bus), `heartbeat.py`, `config.py` |
 | Routing | `chief/intent.py` (approve/skip words, follow-ups, parallel split, skill triggers), `conversation.py` |
-| Skills (one file each) | `audit`, `email_brief`, `draft_reply`, `meeting_prep`, `open_brief`, `trip_planner`, `files`, `general` in `chief/skills/` (contract: `skills/base.py`; guide: `docs/writing-skills.md`) |
+| Skills (one file each) | `audit`, `email_brief`, `morning_brief`, `draft_reply`, `meeting_prep`, `open_brief`, `trip_planner`, `files`, `general` in `chief/skills/` (contract: `skills/base.py`; guide: `docs/writing-skills.md`) |
 | Tools | `tools/base.py` (contract and tool classes), `mock.py`, `live.py` + `composio_client.py`, `recording.py`, `replay.py` (cache and failover), `local.py` (folders/files) |
-| Surfaces | `web/app.py` + `index.html` (phone) + `stage.html` (projector), `slack_app.py`, `screen.py` (real browser windows) |
+| Surfaces | `web/app.py` + `index.html` (phone) + `stage.html` (projector) + `dashboard.html`, `world.js`, `footage/` and `dashboard.py` (the garden: real video by day and at sunset, 3D at night), `telegram_app.py`, `slack_app.py`, `screen.py` (real browser windows) |
 | Demo ops | `launcher.py`, `doctor.py`, `scripts/seed_demo_account.py`, `scripts/tunnel.ps1`, `data/`, `demo/` |
 | Docs | `docs/*.md`: `demo-script.md`, `demo-day.md`, `events.md`, `live-tools.md`, `phone-setup.md`, `screen-setup.md`, `slack-setup.md`, `demo-account.md`, `local-actions.md`, `general-assistant.md`, `submission.md`, `video-shotlist.md` |
 | Background | `research/chief-research.md` (how Muse, Grok, Dot, OpenClaw, GAIA work; what we copied) |
@@ -82,14 +84,16 @@ Diagram: `docs/chief-architecture.excalidraw` (regenerate with `scripts/make_dia
 3. **Email and web text are untrusted.** `draft_reply` builds recipients and subjects from headers and the user's own words, never model
    output; bodies with links or addresses are discarded. The seeded inbox includes an injection email that must stay "flagged, not followed".
 4. **Read-only results are never queued** for approval (`gate.submit`), so "do it" cannot land on an empty card.
-5. **Honesty about mock/cached/simulated.** Mock mode must never claim something really happened (see `open_brief`/`files`:
+5. **Approval text must be true and complete.** `ToolCall.plain()` shows an email in full and falls back to the exact call for anything it
+   does not fully understand, so wording can never hide a recipient, a field or part of a message. Telegram splits long text and never clips it.
+6. **Honesty about mock/cached/simulated.** Mock mode must never claim something really happened (see `open_brief`/`files`:
    "Mock mode: nothing was really opened"). Cached and simulated results carry flags the Stage shows.
-6. **Local actions are allow-listed.** Default allowed folder is only `demo/` (plus `.chief/briefs`). Desktop/Documents/Downloads are opt-in
+7. **Local actions are allow-listed.** Default allowed folder is only `demo/` (plus `.chief/briefs`). Desktop/Documents/Downloads are opt-in
    through `CHIEF_LOCAL_ROOTS` because real file names would appear on a projector. Executables and scripts are never opened.
-7. **The real-window layer only opens or reloads URLs.** It never clicks, types or changes anything in Gmail or Calendar, and it uses a
+8. **The real-window layer only opens or reloads URLs.** It never clicks, types or changes anything in Gmail or Calendar, and it uses a
    dedicated browser profile, never the user's.
-8. **Secrets:** never print, log, or commit them. `.env` is git-ignored. Do not ask the user to paste keys into chat.
-9. **The model client (`chief/llm.py`) sends `stream=False` and a 20 s timeout.** Cline's API streams by default; without this every
+9. **Secrets:** never print, log, or commit them. `.env` is git-ignored. Do not ask the user to paste keys into chat.
+10. **The model client (`chief/llm.py`) sends `stream=False` and a 20 s timeout.** Cline's API streams by default; without this every
    call silently falls back to canned text.
 
 ## 6. What the owner still has to do (an agent cannot)
