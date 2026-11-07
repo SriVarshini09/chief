@@ -75,6 +75,21 @@ If something fails:
 
 The **Browser speech recognition** checkbox is an optional shortcut that skips the server round trip. Chrome on Android lists it as partial support, so it is off by default; the server-side Whisper path is the one to rely on.
 
+## 4. Add it to your home screen
+
+The phone page can be installed, so it gets an icon and opens without browser bars. **This has not been tried on a real phone yet.**
+
+- **Android (Chrome):** open the tunnel link, tap the menu, then **Add to Home screen** or **Install app**.
+- **iPhone (Safari):** open the tunnel link, tap **Share**, then **Add to Home Screen**.
+
+Two things to know first:
+
+- **The icon needs a link that stays the same.** A Cloudflare quick tunnel gets a new address on every start, and the installed app keeps the old
+  one. Use a named tunnel or another fixed address, and set `CHIEF_WEB_TOKEN` so the token stays the same too.
+- **The installed app holds your token.** Anyone who can open your phone can open Chief, so keep the phone locked.
+
+The page does not work offline, and it cannot send notifications. Use [Telegram](telegram-setup.md) for those.
+
 ## The Stage: a big screen that shows everything Chief does
 
 The phone page is the remote control. The **Stage** is what goes on the projector: ask for a brief and the inbox fills in, ask about your week and the calendar changes, ask for research and the searches and sources appear, all while a step log lists every event in order.

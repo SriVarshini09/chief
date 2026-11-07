@@ -32,7 +32,7 @@ def test_approve_with_nothing_pending_is_not_a_command(rt, tools):
 
 def test_unknown_request_lists_skills(rt):
     out = handle_utterance(rt, "what's the capital of France")
-    assert "audit" in out["say"] and out["proposal"] is None
+    assert "your inbox" in out["say"] and out["proposal"] is None
 
 
 def test_empty_input(rt):

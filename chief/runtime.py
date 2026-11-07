@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime
 from typing import Callable
 
@@ -19,7 +20,7 @@ from chief.tools.recording import RecordingTools
 
 def format_card(p: Proposal) -> str:
     lines = [f"[{p.skill}] {p.summary}", ""]
-    lines += [f"  - {a.describe()}" for a in p.actions]
+    lines += [f"  - {a.plain()}" for a in p.actions]
     lines += [f"  source: {s}" for s in p.sources]
     lines.append(f"  (proposal {p.id}: approve or skip)" if p.actions else f"  (proposal {p.id}: read-only, nothing to approve)")
     return "\n".join(lines)
@@ -43,8 +44,10 @@ class Runtime:
         self.conversation = Conversation()  # short-term context for follow-ups (chief/conversation.py)
         self.skills = load_skills()
         self.gate = ApprovalGate(
-            self.tools, self.memory, self.skills, notify or (lambda p: print(format_card(p))), bus=self.bus
+            self.tools, self.memory, self.skills, notify or (lambda p: print(format_card(p))), bus=self.bus,
+            send_delay=cfg.send_delay, clock=self.now,
         )
+        self.turn_lock = threading.RLock()  # the phone page and Telegram take turns
 
     def now(self) -> datetime:
         return self.cfg.now or datetime.now()

@@ -47,6 +47,7 @@ def run(ctx: Context) -> Proposal | None:
 
 
 SKILL = Skill(
+    label="Meeting brief",
     name="open_brief",
     description="Put the one-page brief for your next outside meeting on screen (builds it first if needed).",
     triggers=["show me the brief", "open the brief", "open my brief", "pull up the brief", "show the brief", "show me my brief", "open the meeting brief"],

@@ -4,7 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1115">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Chief">
 <title>Chief</title>
+<script>
+  // Every route needs the token, so the install links have to carry it.
+  (() => {
+    const query = "?token=" + encodeURIComponent(new URLSearchParams(location.search).get("token") || "");
+    for (const [rel, href] of [["manifest", "/manifest.webmanifest"], ["apple-touch-icon", "/icons/apple-touch-icon.png"], ["icon", "/icons/icon-192.png"]]) {
+      const link = document.createElement("link");
+      link.rel = rel;
+      link.href = href + query;
+      document.head.append(link);
+    }
+  })();
+</script>
 <style>
   :root {
     --bg: #0f1115; --panel: #181b22; --line: #2a2f3a; --text: #eef1f6; --muted: #9aa3b2;
@@ -17,16 +33,18 @@
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom));
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
   }
   main { max-width: 560px; margin: 0 auto; display: grid; gap: 14px; }
   header { display: flex; align-items: baseline; justify-content: space-between; }
   h1 { margin: 0; font-size: 22px; }
+  .top { display: flex; gap: 8px; }
+  a.mode { text-decoration: none; }
   .mode { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 2px 10px; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
   .panel h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   #talk {
-    width: 100%; height: 150px; border-radius: 20px; border: 0; cursor: pointer;
+    width: 100%; height: 112px; border-radius: 20px; border: 0; cursor: pointer;
     background: var(--accent); color: #fff; font-size: 22px; font-weight: 600;
     touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
   }
@@ -48,11 +66,23 @@
   .said { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
   .said:empty { display: none; }
   #say { margin: 0; font-size: 18px; white-space: pre-wrap; }
+  #undo { margin-top: 10px; }
   .card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 10px; }
   .card:first-of-type { margin-top: 0; }
   .card .skill { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
   .card p { margin: 4px 0 8px; white-space: pre-wrap; }
-  .card ul { margin: 0 0 10px; padding-left: 18px; color: var(--muted); font-size: 14px; word-break: break-word; }
+  .card .will { margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+  .card ul { margin: 0 0 10px; padding-left: 18px; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .card li { padding: 3px 0; }
+  .card details { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  .card summary { min-height: 32px; cursor: pointer; }
+  .card details code { display: block; padding: 4px 0; overflow-wrap: anywhere; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chips:empty { display: none; }
+  .chip {
+    min-height: 40px; padding: 8px 12px; border-radius: 99px; border: 1px solid var(--line);
+    background: transparent; color: var(--text); font-size: 14px; cursor: pointer;
+  }
   .row { display: flex; gap: 8px; }
   .row .btn { flex: 1; }
   ol#steps { margin: 0; padding-left: 20px; }
@@ -71,8 +101,16 @@
 <main>
   <header>
     <h1>Chief</h1>
-    <span class="mode" id="mode">connecting</span>
+    <span class="top">
+      <a class="mode" id="garden" href="/dashboard">Garden</a>
+      <span class="mode" id="mode">connecting</span>
+    </span>
   </header>
+
+  <section class="panel" id="pendingPanel" hidden>
+    <h2>Waiting for you</h2>
+    <div id="pending"></div>
+  </section>
 
   <section>
     <button id="talk" type="button">Hold to talk</button>
@@ -84,17 +122,14 @@
       <input id="text" type="text" autocomplete="off" enterkeyhint="send" placeholder="Or type: how's my week looking?">
       <button class="btn primary" type="submit">Send</button>
     </form>
+    <div class="chips" id="chips"></div>
   </section>
 
   <section class="panel">
     <h2>Chief says</h2>
     <p class="said" id="heard"></p>
     <p id="say" class="empty">Nothing yet.</p>
-  </section>
-
-  <section class="panel">
-    <h2>Waiting for you</h2>
-    <div id="pending"><span class="empty">No proposals pending.</span></div>
+    <button class="btn" type="button" id="undo" hidden></button>
   </section>
 
   <section class="panel">
@@ -117,6 +152,7 @@
   const $ = (id) => document.getElementById(id);
   const TOKEN = new URLSearchParams(location.search).get("token") || "";
   const HEADERS = { "X-Chief-Token": TOKEN };
+  $("garden").href = "/dashboard?token=" + encodeURIComponent(TOKEN);
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const LATCH_MS = 400; // a press shorter than this latches recording on until the next tap
 
@@ -179,6 +215,14 @@
       setBusy(false);
       poll();
     }
+  }
+
+  // The first things to try, until something has been asked.
+  for (const text of ["Morning brief", "What's in my inbox?", "How's my week looking?"]) {
+    const chip = document.createElement("button");
+    chip.type = "button"; chip.className = "chip"; chip.textContent = text;
+    chip.onclick = () => { primeSpeech(); $("chips").replaceChildren(); ask(text); };
+    $("chips").append(chip);
   }
 
   function setBusy(b) {
@@ -306,25 +350,25 @@
   function renderPending(list) {
     const box = $("pending");
     box.replaceChildren();
-    if (!list.length) {
-      const s = document.createElement("span");
-      s.className = "empty"; s.textContent = "No proposals pending.";
-      box.append(s);
-      return;
-    }
+    $("pendingPanel").hidden = !list.length;
     for (const p of list) {
       const card = document.createElement("div"); card.className = "card";
-      const skill = document.createElement("div"); skill.className = "skill"; skill.textContent = p.skill;
+      const skill = document.createElement("div"); skill.className = "skill"; skill.textContent = p.label;
       const sum = document.createElement("p"); sum.textContent = p.summary;
+      const will = document.createElement("div"); will.className = "will"; will.textContent = "If you approve, I will:";
       const ul = document.createElement("ul");
-      for (const a of p.actions) { const li = document.createElement("li"); li.textContent = a; ul.append(li); }
+      for (const a of p.plain) { const li = document.createElement("li"); li.textContent = a; ul.append(li); }
+      const exact = document.createElement("details");
+      const label = document.createElement("summary"); label.textContent = "Exact details";
+      exact.append(label);
+      for (const a of p.actions) { const c = document.createElement("code"); c.textContent = a; exact.append(c); }
       const row = document.createElement("div"); row.className = "row";
       const yes = document.createElement("button"); yes.className = "btn approve"; yes.textContent = "Approve";
       const no = document.createElement("button"); no.className = "btn"; no.textContent = "Skip";
       yes.onclick = () => decide(p.id, "approve", [yes, no]);
       no.onclick = () => decide(p.id, "skip", [yes, no]);
       row.append(yes, no);
-      card.append(skill, sum, ul);
+      card.append(skill, sum, will, ul, exact);
       if (p.sources.length) {
         const src = document.createElement("div"); src.className = "hint"; src.textContent = "Source: " + p.sources.join(", ");
         card.append(src);
@@ -365,7 +409,16 @@
     $("dot").className = "dot " + (busy ? "busy" : steps.length ? "ok" : "");
   }
 
-  let lastPending = "";
+  let lastPending = "", undoMark = "";
+  $("undo").addEventListener("click", async () => {
+    setError("");
+    try {
+      const out = await api("/undo/" + encodeURIComponent(undoMark), { method: "POST" });
+      $("say").textContent = out.say;
+      speak(out.say);
+    } catch (e) { setError(e.message); }
+    poll();
+  });
   async function poll() {
     try {
       const s = await api("/status");
@@ -374,6 +427,9 @@
       const sig = JSON.stringify(s.pending);
       if (sig !== lastPending) { lastPending = sig; renderPending(s.pending); }
       if (s.heard && !$("heard").textContent) $("heard").textContent = "You: " + s.heard;
+      undoMark = s.undo ? s.undo.mark : "";
+      $("undo").hidden = !s.undo;
+      if (s.undo) $("undo").textContent = s.undo.label + (s.undo.seconds != null ? " (" + s.undo.seconds + "s)" : "");
       if (!s.stt) $("talkHint").textContent = "Speech-to-text is not configured on the server (CHIEF_STT_API_KEY). Type instead.";
     } catch (e) {
       $("mode").textContent = "offline";

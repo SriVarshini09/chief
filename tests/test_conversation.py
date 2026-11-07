@@ -225,14 +225,14 @@ def test_never_mind_skips_a_pending_proposal_and_writes_nothing(rt, tools, phras
     assert next(r for r in rt.memory.records if r["key"] == first.key)["decision"] == "rejected"
 
 
-def test_undo_only_reaches_pending_proposals_never_finished_work(rt, tools):
+def test_undo_reverses_finished_work_only_when_asked(rt, tools):
     handle_utterance(rt, "how's my week")
     handle_utterance(rt, "do it")
     done = list(tools.calls)
-    out = handle_utterance(rt, "undo that")
-    assert "can't undo" in out["say"]
-    assert tools.calls == done and not any(c[0] == "delete_event" for c in tools.calls)
-    assert "Nothing is waiting" in handle_utterance(rt, "never mind")["say"]
+    assert "Nothing is waiting" in handle_utterance(rt, "never mind")["say"]  # "never mind" alone changes nothing
+    assert tools.calls == done
+    assert "reversed" in handle_utterance(rt, "undo that")["say"]
+    assert "Nothing is waiting" in handle_utterance(rt, "undo that")["say"]
 
 
 # --- and what about Friday? ------------------------------------------------------------------------

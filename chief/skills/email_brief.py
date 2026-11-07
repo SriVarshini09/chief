@@ -59,7 +59,7 @@ def classify(mail: Email) -> Item:
     deadline = m.group(0).lower() if m else None
     if any(c in low for c in INJECTION_CUES):
         return Item(mail, "suspicious")
-    if any(a in mail.sender.lower() for a in AUTOMATED):
+    if mail.bulk or any(a in mail.sender.lower() for a in AUTOMATED):
         return Item(mail, "fyi", deadline)
     if any(c in low for c in ASK_CUES):
         return Item(mail, "reply", deadline)
@@ -74,7 +74,7 @@ def recent_unread(ctx: Context) -> list[Email]:
     return [m for m in mails if m.unread and m.received >= cutoff]
 
 
-def _line(item: Item) -> str:
+def item_line(item: Item) -> str:
     extra = f", {item.deadline}" if item.deadline else ""
     return f"{who(item.mail.sender)} ({item.mail.subject}{extra})"
 
@@ -83,7 +83,11 @@ def run(ctx: Context) -> Proposal | None:
     items = [classify(m) for m in recent_unread(ctx)]
     by = {k: [i for i in items if i.kind == k] for k in ("reply", "deadline", "fyi", "suspicious")}
     if not (by["reply"] or by["deadline"] or by["suspicious"]):
-        return None  # only newsletters and noise: not worth an interruption
+        if not ctx.request:
+            return None  # only newsletters and noise: not worth an interruption
+        count = len(by["fyi"])
+        rest = f"{count} recent unread {'email is' if count == 1 else 'emails are'} newsletters or notifications." if count else "You have no recent unread mail."
+        return Proposal(skill="email_brief", summary=f"Nothing needs an answer. {rest}", actions=[], key=f"email_brief:quiet:{ctx.now.date()}")
 
     head = f"Inbox: {len(by['reply'])} to answer, {len(by['deadline'])} deadline(s), {len(by['fyi'])} FYI."
     if by["suspicious"]:
@@ -91,7 +95,7 @@ def run(ctx: Context) -> Proposal | None:
     lines = [head]
     for label, kind in (("To answer", "reply"), ("Deadlines", "deadline"), ("FYI", "fyi")):
         if by[kind]:
-            lines.append(f"{label}: " + "; ".join(_line(i) for i in by[kind]))
+            lines.append(f"{label}: " + "; ".join(item_line(i) for i in by[kind]))
     for i in by["suspicious"]:
         lines.append(f"Flagged, not followed: {who(i.mail.sender)} ({i.mail.subject})")
     fallback = "\n".join(lines)
@@ -108,6 +112,7 @@ def run(ctx: Context) -> Proposal | None:
 
 
 SKILL = Skill(
+    label="Your inbox",
     name="email_brief",
     description="Read-only briefing of recent mail: what needs a reply, deadlines and commitments, and FYI.",
     triggers=["email brief", "brief me on my email", "what's in my inbox", "my inbox", "catch me up on email", "what did i miss"],

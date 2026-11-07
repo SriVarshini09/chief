@@ -54,6 +54,7 @@ ENV_VARS = [
     ("CHIEF_STT_API_KEY", "speech-to-text for the phone's push-to-talk", ""),
     ("CHIEF_WEB_TOKEN", "phone/Stage access token (demo makes one if unset)", ""),
     ("SLACK_BOT_TOKEN", "Slack approvals (optional)", ""),
+    ("TELEGRAM_BOT_TOKEN", "Telegram approvals and morning brief (optional)", ""),
 ]
 
 
@@ -200,7 +201,7 @@ def run_checks(cfg: Config, deps: Deps | None = None, *, live: bool = False, off
         elif required:
             add(f"Env {name}", FAIL, f"NOT set - {why}", f"add {name}=... to .env (see .env.example)", critical=True)
         else:
-            quiet = name in ("CHIEF_MODE", "CHIEF_USER_ID", "SLACK_BOT_TOKEN", "CHIEF_WEB_TOKEN")
+            quiet = name in ("CHIEF_MODE", "CHIEF_USER_ID", "SLACK_BOT_TOKEN", "TELEGRAM_BOT_TOKEN", "CHIEF_WEB_TOKEN")
             add(f"Env {name}", INFO if quiet else soft, f"not set - {why}", "" if quiet else f"optional; add {name}=... to .env if you want it")
 
     # -- Composio connections

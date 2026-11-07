@@ -143,6 +143,7 @@ def run(ctx: Context) -> Proposal | None:
 
 
 SKILL = Skill(
+    label="Your files",
     name="files",
     description="Open your desktop, documents, downloads or demo folder on screen and say what is in it (read-only).",
     triggers=_triggers(),
