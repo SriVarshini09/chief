@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#6fbde6">
+<meta name="referrer" content="no-referrer">
+<title>Chief - connect your accounts</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 30 L12 6 L26 18 Q32 16 38 18 L52 6 L54 30 Q56 54 32 56 Q8 54 10 30Z' fill='%23fbfaf6' stroke='%232a3b30' stroke-width='3'/%3E%3Ccircle cx='23' cy='35' r='3.6' fill='%23222'/%3E%3Ccircle cx='41' cy='35' r='3.6' fill='%23222'/%3E%3Cpath d='M27 43 q2.5 3 5 0 q2.5 3 5 0' fill='none' stroke='%23222' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/front.css">
+</head>
+<body>
+<div class="sun" aria-hidden="true"></div>
+<div class="cloud one" aria-hidden="true"></div>
+<div class="meadow" aria-hidden="true">
+  <svg viewBox="0 0 1200 400" preserveAspectRatio="none">
+    <path d="M0 170 C220 90 420 150 640 120 S1000 70 1200 130 V400 H0Z" fill="#a8d0b0"/>
+    <path d="M0 240 C260 180 480 250 720 210 S1040 170 1200 220 V400 H0Z" fill="#7fb78b"/>
+    <path d="M0 310 C300 270 560 330 820 290 S1100 280 1200 300 V400 H0Z" fill="#569a68"/>
+  </svg>
+</div>
+
+<main>
+  <header>
+    <a class="brand" href="/welcome" aria-label="Chief, home">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M10 30 L12 6 L26 18 Q32 16 38 18 L52 6 L54 30 Q56 54 32 56 Q8 54 10 30Z" fill="#fbfaf6" stroke="#2a3b30" stroke-width="3"/><circle cx="23" cy="35" r="3.6" fill="#222"/><circle cx="41" cy="35" r="3.6" fill="#222"/><path d="M27 43 q2.5 3 5 0 q2.5 3 5 0" fill="none" stroke="#222" stroke-width="2.2" stroke-linecap="round"/></svg>
+      Chief
+    </a>
+    <nav class="links" aria-label="Chief pages">
+      <span class="tag" id="mode">checking</span>
+      <a id="garden" href="/dashboard">Garden</a>
+      <a id="talk" href="/">Talk</a>
+      <button type="button" id="signOut">Sign out</button>
+    </nav>
+  </header>
+
+  <section class="hero" aria-labelledby="title" style="padding-bottom:16px">
+    <h1 id="title">Connect your accounts</h1>
+    <p class="lead" id="hello">Everything Chief can use, and what is connected right now.</p>
+    <p class="error" role="alert" id="pageError"></p>
+  </section>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="gTitle">
+      <div class="card-head"><h2 id="gTitle">Google: Gmail and Calendar</h2><span class="badge off" id="gBadge">checking</span></div>
+      <p class="soft" id="gText">Looking...</p>
+      <ul class="keys" id="gKits" hidden></ul>
+      <div class="row" id="gButtons" style="margin-top:12px" hidden>
+        <button class="btn primary small" type="button" data-kit="gmail">Connect Gmail</button>
+        <button class="btn primary small" type="button" data-kit="calendar">Connect Calendar</button>
+        <button class="btn ghost small" type="button" id="gCheck">Check again</button>
+      </div>
+      <p class="small soft" style="margin-top:10px">The Google page opens in a new tab, through Composio. Chief only reads until you approve a change.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="tTitle">
+      <div class="card-head"><h2 id="tTitle">Telegram</h2><span class="badge off" id="tBadge">checking</span></div>
+      <p class="soft" id="tText"></p>
+      <ol class="steps soft small" id="tSteps">
+        <li>Make a bot with <b>@BotFather</b> and put its token in <code>.env</code> as <code>TELEGRAM_BOT_TOKEN</code>.</li>
+        <li>Put your numeric Telegram id in <code>.env</code> as <code>TELEGRAM_USER_ID</code>, so the bot answers only you.</li>
+        <li>Restart <code>chief web</code>. Telegram starts with it.</li>
+      </ol>
+      <p style="margin-top:10px"><a id="tDoc" href="#" target="_blank" rel="noopener noreferrer">Step-by-step Telegram guide</a></p>
+    </section>
+
+    <section class="panel" aria-labelledby="lTitle">
+      <div class="card-head"><h2 id="lTitle">Location</h2><span class="badge off" id="lBadge">checking</span></div>
+      <div class="consent" id="lConsent" style="margin-top:10px">
+        <p><b>Can I use your live location?</b><br>I'll use it to find places and directions near you, keep it only while Chief is running, and you can switch it off any time.</p>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary small" type="button" id="lYes">Yes, share it</button>
+        </div>
+      </div>
+      <div class="row" id="lOn" style="margin-top:10px" hidden>
+        <p class="soft">Shared. Chief keeps it in memory only, never on disk.</p>
+        <button class="btn ghost small" type="button" id="lStop">Stop sharing</button>
+      </div>
+      <p class="error small" role="alert" id="lError"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="bTitle">
+      <div class="card-head"><h2 id="bTitle">Morning brief and time zone</h2></div>
+      <p id="bHour" style="margin-top:8px"></p>
+      <p id="bZone"></p>
+      <p class="small soft">To change them, set <code>CHIEF_BRIEF_HOUR</code> (0 to 23, or <code>off</code>) and <code>CHIEF_TIMEZONE</code> in <code>.env</code>, then restart Chief. Chief reads them when it starts, so they aren't saved from this page.</p>
+      <p class="small soft" id="bSuggest"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="kTitle" style="grid-column:1/-1">
+      <div class="card-head"><h2 id="kTitle">Keys in .env</h2><span class="badge off" id="kBadge"></span></div>
+      <p class="soft small">Keys stay in the <code>.env</code> file on the computer running Chief. This page shows only whether each is set, never its value, and never asks you for one.</p>
+      <ul class="keys" id="keys"></ul>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let TOKEN = (() => {
+    const p = new URLSearchParams(location.search), t = p.get("token");
+    if (t) {
+      try { sessionStorage.setItem("chief-token", t); } catch (_) {}
+      p.delete("token");
+      history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : ""));
+      return t;
+    }
+    try { return sessionStorage.getItem("chief-token") || ""; } catch (_) { return ""; }
+  })();
+
+  async function ensureToken() {  // after a password sign-in the token comes from the cookie, once
+    if (TOKEN) return;
+    const res = await fetch("/session", { cache: "no-store", headers: { "X-Chief-Session": "1" } });
+    if (res.status === 401) { location.assign("/signin?next=/setup"); throw new Error("signed out"); }
+    if (!res.ok) throw new Error("Couldn't start the page. Reload it.");
+    TOKEN = (await res.json()).token;
+    try { sessionStorage.setItem("chief-token", TOKEN); } catch (_) {}
+  }
+
+  async function api(path, opts = {}) {
+    await ensureToken();
+    const res = await fetch(path, { cache: "no-store", ...opts, headers: { "X-Chief-Token": TOKEN, ...(opts.headers || {}) } });
+    let data = {};
+    try { data = await res.json(); } catch (_) {}
+    if (res.status === 401) { location.assign("/signin?next=/setup"); throw new Error("signed out"); }
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+    return data;
+  }
+
+  const badge = (el, kind, text) => { el.className = "badge " + kind; el.textContent = text; };
+  const KIT_NAMES = { gmail: "Gmail", googlecalendar: "Calendar" };
+
+  function renderGoogle(g) {
+    const buttons = $("gButtons"), kits = $("gKits");
+    buttons.hidden = true; kits.hidden = true;
+    if (g.state === "sample") {
+      badge($("gBadge"), "wait", "Sample data");
+      $("gText").innerHTML = "Chief is running on <b>sample data</b> (made-up mail and calendar), so nothing real is read. To use your own Google account, set <code>CHIEF_MODE=live</code> and <code>COMPOSIO_API_KEY</code> in <code>.env</code>, then restart Chief.";
+      return;
+    }
+    if (g.state === "no_key") {
+      badge($("gBadge"), "bad", "Needs a key");
+      $("gText").innerHTML = "Add <code>COMPOSIO_API_KEY</code> to <code>.env</code> and restart Chief. Then come back here to connect.";
+      return;
+    }
+    if (g.state === "error") {
+      badge($("gBadge"), "bad", "Couldn't check");
+      $("gText").textContent = "Composio didn't answer (" + (g.detail || "error") + "). Check the Wi-Fi and try again.";
+      buttons.hidden = false;
+      return;
+    }
+    const all = g.state === "connected";
+    badge($("gBadge"), all ? "ok" : "wait", all ? "Connected" : "Not connected yet");
+    $("gText").textContent = all ? "Chief can read your Gmail and Calendar. It changes nothing until you approve."
+      : "Connect each one. Sign in with the Google account Chief should look after.";
+    kits.innerHTML = "";
+    for (const [slug, ok] of Object.entries(g.toolkits || {})) {
+      const li = document.createElement("li");
+      const name = document.createElement("span"); name.textContent = KIT_NAMES[slug] || slug;
+      const state = document.createElement("span"); badge(state, ok ? "ok" : "off", ok ? "Connected" : "Not connected");
+      li.append(name, state); kits.append(li);
+    }
+    kits.hidden = !kits.children.length;
+    buttons.hidden = false;
+    for (const b of buttons.querySelectorAll("[data-kit]")) {
+      const slug = b.dataset.kit === "calendar" ? "googlecalendar" : b.dataset.kit;
+      b.textContent = (g.toolkits[slug] ? "Reconnect " : "Connect ") + (KIT_NAMES[slug] || slug);
+    }
+  }
+
+  function renderTelegram(t) {
+    $("tDoc").href = t.doc;
+    $("tSteps").hidden = t.bot && t.owner;
+    if (t.bot && t.owner) { badge($("tBadge"), "ok", "Set up"); $("tText").textContent = "The bot is set up and answers only you. It starts with chief web."; }
+    else if (t.bot) { badge($("tBadge"), "wait", "Almost"); $("tText").innerHTML = "The bot token is set. Add your <code>TELEGRAM_USER_ID</code> so it knows who you are."; }
+    else { badge($("tBadge"), "off", "Not set up"); $("tText").textContent = "Optional: approvals, check-ins and the morning brief in Telegram, with notifications."; }
+  }
+
+  function renderLocation(shared) {
+    badge($("lBadge"), shared ? "ok" : "off", shared ? "Shared" : "Not shared");
+    $("lConsent").hidden = shared;
+    $("lOn").hidden = !shared;
+  }
+
+  function renderBrief(b) {
+    $("bHour").innerHTML = b.hour === null ? "Morning brief: <b>off</b>" : "Morning brief: <b>" + String(b.hour).padStart(2, "0") + ":00</b> each day";
+    const browserZone = (Intl.DateTimeFormat().resolvedOptions().timeZone || "");
+    $("bZone").innerHTML = "";
+    $("bZone").append(b.timezone ? "Time zone: " : "Time zone: not set, so Chief uses this computer's (" + (b.computer_zone || "local") + ")");
+    if (b.timezone) { const z = document.createElement("b"); z.textContent = b.timezone; $("bZone").append(z); }
+    $("bSuggest").textContent = browserZone && browserZone !== b.timezone ? "This browser is in " + browserZone + ". To match it: CHIEF_TIMEZONE=" + browserZone : "";
+  }
+
+  function renderKeys(keys) {
+    const list = $("keys");
+    list.innerHTML = "";
+    for (const k of keys) {
+      const li = document.createElement("li");
+      const left = document.createElement("span");
+      const code = document.createElement("code"); code.textContent = k.name;
+      const why = document.createElement("span"); why.className = "why"; why.textContent = " " + k.why;
+      left.append(code, why);
+      const state = document.createElement("span"); badge(state, k.set ? "ok" : "off", k.set ? "set" : "not set");
+      li.append(left, state); list.append(li);
+    }
+    badge($("kBadge"), "off", keys.filter((k) => k.set).length + " of " + keys.length + " set");
+  }
+
+  async function refresh(fresh) {
+    try {
+      const s = await api("/setup/status" + (fresh ? "?fresh=1" : ""));
+      $("pageError").textContent = "";
+      $("mode").textContent = s.mode === "mock" ? "sample data" : s.mode + " mode";
+      if (s.owner && s.owner.name) $("hello").textContent = "Hi " + s.owner.name + ". Here is everything Chief can use, and what is connected right now.";
+      renderGoogle(s.google); renderTelegram(s.telegram); renderLocation(s.location.shared); renderBrief(s.brief); renderKeys(s.keys);
+      return s;
+    } catch (err) {
+      if (err.message !== "signed out") $("pageError").textContent = err.message;
+    }
+  }
+
+  let watching = null;
+  function watchGoogle() {  // after you open a connect link, look again every few seconds for three minutes
+    clearInterval(watching);
+    let tries = 0;
+    watching = setInterval(async () => {
+      const s = await refresh(true);
+      if (++tries > 30 || (s && s.google.state === "connected")) clearInterval(watching);
+    }, 6000);
+  }
+
+  for (const b of document.querySelectorAll("[data-kit]")) {
+    b.addEventListener("click", async () => {
+      const tab = window.open("", "_blank");  // opened now, while it still counts as your tap, so it isn't blocked
+      if (tab) { tab.opener = null; tab.document.title = "Opening Google..."; }
+      try {
+        const out = await api("/setup/connect/" + b.dataset.kit, { method: "POST" });
+        if (!/^https:\/\//.test(out.url)) throw new Error("Composio did not return a usable link.");
+        if (tab) tab.location.href = out.url; else location.assign(out.url);
+        watchGoogle();
+      } catch (err) {
+        if (tab) tab.close();
+        $("gText").textContent = err.message;
+      }
+    });
+  }
+  $("gCheck").addEventListener("click", () => refresh(true));
+  addEventListener("focus", () => { if (watching) refresh(true); });
+
+  $("lYes").addEventListener("click", () => {
+    $("lError").textContent = "";
+    if (!navigator.geolocation) { $("lError").textContent = "This browser can't share a location. Tell Chief instead: I'm at ..."; return; }
+    if (!window.isSecureContext) { $("lError").textContent = "Location needs a secure page (https or this computer). Use Telegram's Share my location, or say: I'm at ..."; return; }
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        await api("/location", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lat: pos.coords.latitude, lon: pos.coords.longitude }) });
+        renderLocation(true);
+      } catch (err) { $("lError").textContent = err.message; }
+    }, () => { $("lError").textContent = "Location was not shared. You can still tell Chief where you are."; }, { enableHighAccuracy: true, timeout: 15000 });
+  });
+  $("lStop").addEventListener("click", async () => {
+    try { await api("/location", { method: "DELETE" }); renderLocation(false); } catch (err) { $("lError").textContent = err.message; }
+  });
+
+  $("signOut").addEventListener("click", async () => {
+    try { sessionStorage.removeItem("chief-token"); } catch (_) {}
+    try { await fetch("/signout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); } catch (_) {}
+    location.assign("/welcome");
+  });
+
+  refresh(false);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#6fbde6">
+<meta name="referrer" content="no-referrer">
+<title>Chief - sign in</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 30 L12 6 L26 18 Q32 16 38 18 L52 6 L54 30 Q56 54 32 56 Q8 54 10 30Z' fill='%23fbfaf6' stroke='%232a3b30' stroke-width='3'/%3E%3Ccircle cx='23' cy='35' r='3.6' fill='%23222'/%3E%3Ccircle cx='41' cy='35' r='3.6' fill='%23222'/%3E%3Cpath d='M27 43 q2.5 3 5 0 q2.5 3 5 0' fill='none' stroke='%23222' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/front.css">
+</head>
+<body>
+<div class="sun" aria-hidden="true"></div>
+<div class="cloud one" aria-hidden="true"></div>
+<div class="meadow" aria-hidden="true">
+  <svg viewBox="0 0 1200 400" preserveAspectRatio="none">
+    <path d="M0 170 C220 90 420 150 640 120 S1000 70 1200 130 V400 H0Z" fill="#a8d0b0"/>
+    <path d="M0 240 C260 180 480 250 720 210 S1040 170 1200 220 V400 H0Z" fill="#7fb78b"/>
+    <path d="M0 310 C300 270 560 330 820 290 S1100 280 1200 300 V400 H0Z" fill="#569a68"/>
+  </svg>
+</div>
+
+<main>
+  <header>
+    <a class="brand" href="/welcome" aria-label="Chief, home">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M10 30 L12 6 L26 18 Q32 16 38 18 L52 6 L54 30 Q56 54 32 56 Q8 54 10 30Z" fill="#fbfaf6" stroke="#2a3b30" stroke-width="3"/><circle cx="23" cy="35" r="3.6" fill="#222"/><circle cx="41" cy="35" r="3.6" fill="#222"/><path d="M27 43 q2.5 3 5 0 q2.5 3 5 0" fill="none" stroke="#222" stroke-width="2.2" stroke-linecap="round"/></svg>
+      Chief
+    </a>
+  </header>
+
+  <div class="narrow" style="margin-top:clamp(24px,8vh,70px)">
+    <p id="loading" class="panel soft" role="status">One moment...</p>
+
+    <section id="create" class="panel" aria-labelledby="createTitle" hidden>
+      <h2 id="createTitle">Create your account</h2>
+      <p class="soft small">This Chief works for one person: you. Your password is stored only as a scrypt hash on this computer.</p>
+      <form id="createForm" novalidate style="margin-top:14px">
+        <label>Your name<input name="name" autocomplete="name" required maxlength="80"></label>
+        <label>Email<input name="email" type="email" autocomplete="email" inputmode="email" required maxlength="254">
+          <span class="hint">The Gmail you'll connect next is a good choice. You sign in with it.</span></label>
+        <label>Password<input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="256">
+          <span class="hint">At least 10 characters.</span></label>
+        <p class="error" role="alert" id="createError"></p>
+        <button class="btn primary" type="submit">Create account</button>
+      </form>
+    </section>
+
+    <section id="noCreate" class="panel" aria-labelledby="noCreateTitle" hidden>
+      <h2 id="noCreateTitle">Create your account on your computer</h2>
+      <p class="soft">For safety, the first account can only be made from the computer running Chief, or with the private link Chief printed when it started.</p>
+      <ol class="steps soft">
+        <li>On that computer, open the <b>/welcome</b> link that <code>chief web</code> printed.</li>
+        <li>Or open the private <code>?token=</code> link it printed, then come back here.</li>
+      </ol>
+    </section>
+
+    <section id="signin" class="panel" aria-labelledby="signinTitle" hidden>
+      <h2 id="signinTitle">Sign in</h2>
+      <form id="signinForm" novalidate style="margin-top:14px">
+        <label>Email<input name="email" type="email" autocomplete="username" inputmode="email" required maxlength="254"></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="256"></label>
+        <p class="error" role="alert" id="signinError"></p>
+        <button class="btn primary" type="submit">Sign in</button>
+      </form>
+      <p class="small soft" style="margin-top:14px">Forgot it? See "Forgot your password" in docs/sign-in.md: you make the account again on the computer running Chief.</p>
+    </section>
+
+    <section id="already" class="panel" aria-labelledby="alreadyTitle" hidden>
+      <h2 id="alreadyTitle">You're signed in</h2>
+      <div class="row" style="margin-top:14px">
+        <a class="btn primary" href="/dashboard">Open your garden</a>
+        <a class="btn ghost" href="/setup">Connect accounts</a>
+        <button class="btn ghost" type="button" id="signOut">Sign out</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  const NEXT = ["/dashboard", "/setup", "/"].includes(params.get("next")) ? params.get("next") : "";
+  let TOKEN = (() => {  // a private link works here too; keep it for this tab only and take it out of the address bar
+    const t = params.get("token");
+    if (t) {
+      try { sessionStorage.setItem("chief-token", t); } catch (_) {}
+      params.delete("token");
+      history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : ""));
+      return t;
+    }
+    try { return sessionStorage.getItem("chief-token") || ""; } catch (_) { return ""; }
+  })();
+  const headers = () => (TOKEN ? { "X-Chief-Token": TOKEN } : {});
+
+  function show(id) {
+    for (const s of ["loading", "create", "noCreate", "signin", "already"]) $(s).hidden = s !== id;
+    const first = $(id).querySelector("input");
+    if (first) first.focus();
+  }
+
+  async function post(path, body) {
+    const res = await fetch(path, {
+      method: "POST", cache: "no-store",
+      headers: { "Content-Type": "application/json", ...headers() },
+      body: JSON.stringify(body),
+    });
+    let data = {};
+    try { data = await res.json(); } catch (_) {}
+    if (!res.ok) throw new Error(res.status === 429 ? "Too many tries. Wait a few minutes, then try again." : (data.detail || "That didn't work. Try again."));
+    return data;
+  }
+
+  async function keepToken() {  // the pages send the token with each request; fetch it once with the new cookie
+    const res = await fetch("/session", { cache: "no-store", headers: { "X-Chief-Session": "1" } });
+    if (!res.ok) return;
+    const data = await res.json();
+    try { sessionStorage.setItem("chief-token", data.token); } catch (_) {}
+  }
+
+  function wire(formId, errorId, path, fields, fallback) {
+    const form = $(formId), error = $(errorId), button = form.querySelector("button");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      error.textContent = "";
+      const body = { next: NEXT };
+      for (const f of fields) body[f] = form.elements[f].value;
+      if (fields.some((f) => !body[f].trim())) { error.textContent = "Please fill in every box."; return; }
+      button.disabled = true;
+      try {
+        const out = await post(path, body);
+        form.elements.password.value = "";
+        await keepToken();
+        location.assign(out.next || fallback);
+      } catch (err) {
+        error.textContent = err.message;
+        form.elements.password.value = "";
+        form.elements.password.focus();
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+  wire("createForm", "createError", "/signin/create", ["name", "email", "password"], "/setup");
+  wire("signinForm", "signinError", "/signin", ["email", "password"], "/dashboard");
+
+  $("signOut").addEventListener("click", async () => {
+    try { sessionStorage.removeItem("chief-token"); } catch (_) {}
+    try { await post("/signout", {}); } catch (_) {}
+    location.assign("/welcome");
+  });
+
+  (async () => {
+    const s = await (await fetch("/signin/state", { cache: "no-store", headers: headers() })).json();
+    if (s.signed_in && !TOKEN) {  // signed in earlier in this browser: pick the token up from the cookie
+      await keepToken().catch(() => {});
+      try { TOKEN = sessionStorage.getItem("chief-token") || ""; } catch (_) {}
+      if (!s.owner && TOKEN) s.can_create = true;
+    }
+    if (!s.owner) return show(s.can_create ? "create" : s.signed_in ? "already" : "noCreate");
+    show(s.signed_in ? "already" : "signin");
+  })().catch(() => { $("loading").textContent = "Chief isn't answering. Is it still running?"; });
+})();
+</script>
+</body>
+</html>
