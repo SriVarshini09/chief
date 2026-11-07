@@ -81,7 +81,7 @@ def test_the_phone_card_has_plain_words_a_title_and_the_exact_calls(client):
 
 
 def test_an_unknown_request_is_answered_in_plain_words(rt):
-    say = handle_utterance(rt, "when is my first meeting tomorrow?")["say"]
+    say = handle_utterance(rt, "what's the capital of France?")["say"]
     assert "your inbox" in say and "draft_reply" not in say and "AI model" in say
 
 

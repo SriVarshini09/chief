@@ -355,7 +355,7 @@
 
     function update(dt, time) {
       if (x === null) {
-        x = options.still ? home() : home() - 150;
+        x = options.still ? home() : home() - 70;
         y = homeSpot().y;
         if (options.still) { arrived = true; }
         else plan = [{ walk: home() + 40 }, { face: "you" }, { call() { arrived = true; if (options.onArrive) options.onArrive(); } }, { wave: 1.7 }];

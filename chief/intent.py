@@ -358,10 +358,36 @@ def _handle(rt: Runtime, text: str) -> dict:
     if plan:
         return _run_tasks(rt, plan)
 
+    small = _small_talk(said)
+    if small:
+        return _result(small)
     say = (
-        "I can help with your inbox, your week, email replies, meeting prep, trips, a morning brief and your files. "
-        "Try: what's in my inbox?"
+        "I can help with your inbox, your calendar, reminders, email replies, meeting prep and a morning brief. "
+        "Try: what's on tomorrow?"
     )
     if not rt.llm.enabled:
         say += " Other questions need an AI model connected."
     return _result(say)
+
+
+_HELLO = re.compile(r"^(hi|hello|hey|hiya|yo|good (morning|afternoon|evening)|morning|evening)( there| chief)?$")
+_THANKS = re.compile(r"\b(thanks|thank you|thx|ty|cheers|appreciate it)\b")
+_HELP = re.compile(r"\b(what can you do|what do you do|help me|^help$|how do i use you|what are you)\b")
+_BYE = re.compile(r"^(bye|goodbye|good night|see you|see ya|later)( chief)?$")
+
+
+def _small_talk(said: str) -> str | None:
+    """The things people say to anyone: answered kindly, in plain code, without pretending to do more."""
+    if _HELLO.search(said):
+        return "Hi! Ask me what's on today, what's in your inbox, or to remind you about something."
+    if _THANKS.search(said):
+        return "You're welcome! I'm here if you need anything else."
+    if _BYE.search(said):
+        return "Bye for now. I'll keep an eye on things."
+    if _HELP.search(said):
+        return (
+            "I can tell you what's on your calendar, find free time, set reminders, and move or cancel meetings. "
+            "I can also sum up your inbox, tell you what someone said, and draft replies. "
+            "Nothing changes until you approve it. Try: remind me to call mom at 6pm."
+        )
+    return None
