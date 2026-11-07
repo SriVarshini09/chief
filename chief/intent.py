@@ -102,8 +102,43 @@ def _llm_pick(rt: Runtime, text: str) -> str | None:
     return choice if choice in names else None
 
 
+# The safety net for words people really use, when no trigger phrase matched and no model is connected.
+# Only read-only skills, or ones whose changes still wait for approval. First match wins, so order matters.
+_KEYWORDS = [
+    (re.compile(r"\b(book|reserve|reservation|seats?)\b.*\b(restaurant|table|dinner|lunch|for \d|seats?)\b|\b(restaurant|table)\b.*\b(book|reserve)\b"), "booking"),
+    (re.compile(r"\b(directions?|navigate|route|how far|get to|way to)\b"), "directions"),
+    (re.compile(r"\b(e-?mails?|mails?|inbox|gmail|messages)\b"), "email_brief"),
+    (re.compile(r"\b(calendar|meetings?|schedule|appointments?|events?)\b"), "agenda"),
+    (re.compile(r"\b(restaurants?|cafes?|coffee|food|eat|hungry|pharmacy|atm|nearby|near)\b"), "nearby"),
+]
+
+
+def _answer_to_my_question(rt: Runtime, text: str) -> tuple[str, str] | None:
+    """Chief just asked "What time...?" and you answered "7pm": finish that same request with the time.
+    Only when it was the very last thing Chief said, so an old question can't catch a new message."""
+    from chief.when import day_in, times_in
+
+    last = rt.conversation.last_tasks[-1] if rt.conversation.last_tasks else None
+    history = rt.conversation.history()
+    if last is None or not history or "What time" not in (last.say or "") or history[-1].get("chief") != last.say:
+        return None
+    if last.skill not in ("booking", "calendar_edit") or not (times_in(text) or day_in(text, rt.now())):
+        return None
+    joiner = " " if re.match(r"\s*(at|on|tomorrow|tonight|today)\b", text, re.I) else " at "
+    return last.skill, last.request.rstrip(" ?.!") + joiner + text.strip()
+
+
+def _keyword_pick(rt: Runtime, said: str) -> str | None:
+    for pattern, skill in _KEYWORDS:
+        if skill in rt.skills and pattern.search(said):
+            return skill
+    return None
+
+
 def _route(rt: Runtime, text: str, said: str) -> str | None:
     name = _match_skill(rt, said) or _llm_pick(rt, text)
+    if not name and not rt.llm.enabled:
+        name = _keyword_pick(rt, said)
     if not name and rt.llm.enabled and "general" in rt.skills:
         name = "general"  # nothing matched: let the model answer with read-only tools
     return name
@@ -437,6 +472,10 @@ def _handle(rt: Runtime, text: str) -> dict:
         plan = [(name, text)] if name else None
     if plan:
         return _run_tasks(rt, plan)
+
+    answer = _answer_to_my_question(rt, text)
+    if answer:
+        return _run_tasks(rt, [answer])
 
     small = _small_talk(said)
     if small:
