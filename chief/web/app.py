@@ -21,6 +21,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from chief import guide as walking_guide
 from chief.dashboard import snapshot
 from chief.gate import results_text
 from chief.intent import handle_utterance
@@ -32,6 +33,7 @@ STAGE_PAGE = Path(__file__).parent / "stage.html"
 DASHBOARD_PAGE = Path(__file__).parent / "dashboard.html"
 WORLD_SCRIPT = Path(__file__).parent / "world.js"
 PET_SCRIPT = Path(__file__).parent / "pet.js"
+GUIDE_SCRIPT = Path(__file__).parent / "guide.js"
 FOOTAGE = Path(__file__).parent / "footage"
 OWN_PICTURE = "background.jpg"
 FOOTAGE_FILES = {
@@ -298,6 +300,36 @@ def create_app(rt: Runtime, token: str, transcriber: Transcriber | None = None) 
     def forget_location() -> dict:
         rt.where.clear()
         return {"ok": True}
+
+    # ---- walking guidance: turn by turn from your live location (chief/guide.py), memory only --------
+
+    @app.get("/guide.js", dependencies=auth)
+    def guide_script() -> FileResponse:
+        return FileResponse(GUIDE_SCRIPT, media_type="text/javascript", headers={"Cache-Control": "no-store"})
+
+    def _position(body: dict) -> tuple[float, float, float | None]:
+        try:
+            lat, lon = float(body.get("lat")), float(body.get("lon"))
+            rt.where.set(lat, lon, label="", source="browser", now=rt.now())  # guiding also keeps "Around you" current
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, "lat and lon must be numbers on Earth") from exc
+        acc = body.get("accuracy")
+        return lat, lon, float(acc) if isinstance(acc, (int, float)) and not isinstance(acc, bool) else None
+
+    @app.post("/guide/start", dependencies=auth)
+    def guide_start(body: dict) -> dict:
+        lat, lon, acc = _position(body)
+        to = body.get("to") if isinstance(body.get("to"), dict) else None
+        return walking_guide.start(rt.where, rt.tools, lat, lon, to, acc)
+
+    @app.post("/guide/tick", dependencies=auth)
+    def guide_tick(body: dict) -> dict:
+        lat, lon, acc = _position(body)
+        return walking_guide.tick(rt.where, rt.tools, lat, lon, acc)
+
+    @app.post("/guide/stop", dependencies=auth)
+    def guide_stop() -> dict:
+        return walking_guide.stop(rt.where)
 
     @app.get("/status", dependencies=auth)
     def status() -> dict:
