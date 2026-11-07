@@ -25,6 +25,9 @@ from datetime import timedelta
 
 from chief.activity import task_scope
 from chief.conversation import Task, pending_note, resolve
+from chief.gate import SKIPPED
+from chief.gate import changes as _changes
+from chief.gate import made as _made
 from chief.models import Proposal
 from chief.runtime import Runtime
 
@@ -255,7 +258,7 @@ def _run_tasks(rt: Runtime, plan: list[tuple[str, str]]) -> dict:
 
 
 def _approve(rt: Runtime, ids: list[str]) -> dict:
-    changes, errors, count = 0, [], 0
+    total, errors, count = 0, [], 0
     for pid in ids:
         if pid not in rt.gate.pending:
             continue
@@ -269,15 +272,15 @@ def _approve(rt: Runtime, ids: list[str]) -> dict:
         if failed:
             errors.append(failed[0]["error"])
         else:
-            changes += len(results)
+            total += len(results)
     if errors:
-        say, steps = f"That didn't go through: {errors[0]}", ["Applying changes", "Failed"]
+        say, steps = f"I'm sorry, that didn't go through: {errors[0]}", ["Applying changes", "Failed"]
     elif count > 1:
-        say, steps = f"Done. {changes} change(s) made across {count} proposals.", ["Applying changes", "Done"]
+        say, steps = f"All done. I made {_changes(total)} across {count} proposals. Thanks for looking them over.", ["Applying changes", "Done"]
     elif rt.gate.held:
         say, steps = f"Sending in {rt.gate.send_delay:g} seconds. Say undo to stop it.", ["Holding the email", "Sending soon"]
     else:
-        say, steps = f"Done. {changes} change(s) made.", ["Applying changes", "Done"]
+        say, steps = _made(total), ["Applying changes", "Done"]
         if rt.gate.last_undo:
             say += " Say undo to reverse it."
     note = pending_note(rt)
@@ -336,7 +339,7 @@ def _skip(rt: Runtime, ids: list[str]) -> dict:
                 except KeyError:
                     pass
     note = pending_note(rt)
-    return _result("Okay, skipped." + (" " + note if note else ""))
+    return _result(SKIPPED + (" " + note if note else ""))
 
 
 def _result(
@@ -456,16 +459,16 @@ _BYE = re.compile(r"^(bye|goodbye|good night|see you|see ya|later)( chief)?$")
 def _small_talk(said: str) -> str | None:
     """The things people say to anyone: answered kindly, in plain code, without pretending to do more."""
     if _HELLO.search(said):
-        return "Hi! Ask me what's on today, what's in your inbox, or to remind you about something."
+        return "Hi! It's good to hear from you. Ask me what's on today, what's in your inbox, or to remind you about something."
     if _THANKS.search(said):
-        return "You're welcome! I'm here if you need anything else."
+        return "You're welcome, and thank you for letting me help. I'm here if you need anything else."
     if _BYE.search(said):
-        return "Bye for now. I'll keep an eye on things."
+        return "Bye for now, and thanks. I'll keep an eye on things."
     if _HELP.search(said):
         return (
             "I can tell you what's on your calendar, find free time, set reminders, and move or cancel meetings. "
             "I can also sum up your inbox, tell you what someone said, and draft replies. "
             "Out and about, I find places near you (sushi near me), give directions and get a table ready for you to book. "
-            "Nothing changes until you approve it. Try: remind me to call mom at 6pm."
+            "Nothing changes until you approve it. Try: remind me to call mom at 6pm. I'm always happy to help."
         )
     return None

@@ -15,7 +15,7 @@ from chief.intent import _command, handle_utterance
 def test_natural_ways_of_approving(rt, tools, said):
     handle_utterance(rt, "how's my week looking?")
     out = handle_utterance(rt, said)
-    assert "change(s) made" in out["say"], said
+    assert "All done. I made" in out["say"], said
     assert any(c[0] == "create_event" for c in tools.calls)
 
 
@@ -25,7 +25,7 @@ def test_natural_ways_of_approving(rt, tools, said):
 def test_natural_ways_of_skipping(rt, tools, said):
     handle_utterance(rt, "how's my week looking?")
     out = handle_utterance(rt, said)
-    assert out["say"] == "Okay, skipped.", said
+    assert out["say"] == "No problem, I've skipped that one.", said
     assert tools.calls == []
     assert rt.gate.pending == {}
 

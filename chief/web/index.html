@@ -99,6 +99,7 @@
   .empty { color: var(--muted); }
   .opts { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 14px; }
   .opts label { display: flex; align-items: center; gap: 6px; min-height: 32px; }
+  .opts select { max-width: 62vw; min-height: 32px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--muted); border-radius: 8px; padding: 0 6px; }
   #err { color: var(--warn); font-size: 14px; margin: 0; }
   #err:empty { display: none; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
@@ -169,6 +170,7 @@
   <section class="opts">
     <label><input type="checkbox" id="speak" checked> Spoken replies</label>
     <label><input type="checkbox" id="browserSr"> Browser speech recognition (experimental)</label>
+    <label>Voice <select id="voicePick" aria-label="Chief's voice"></select></label>
     <button class="btn" type="button" id="testVoice">Test voice</button>
   </section>
 </main>
@@ -211,23 +213,37 @@
   }
 
   // ---- speech out -------------------------------------------------------
-  function speak(text) {
-    if (!text || !$("speak").checked || !("speechSynthesis" in window)) return;
-    speechSynthesis.cancel();
+  // The natural voice when the server has one, otherwise the most natural voice on this device, sentence by
+  // sentence with short pauses (chief/web/voice.js). Without that script, the browser's default voice.
+  function speak(text, mood = "calm") {
+    if (!text || !$("speak").checked) return;
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+    if (window.ChiefVoice) { ChiefVoice.say(text, mood, { token: TOKEN }); return; }
+    if (!("speechSynthesis" in window)) return;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = navigator.language || "en-US";
     speechSynthesis.speak(u);
   }
+  const voiceScript = document.createElement("script");
+  voiceScript.src = "/dashboard/voice.js?token=" + encodeURIComponent(TOKEN);
+  voiceScript.onload = () => { if (window.ChiefVoice && "speechSynthesis" in window) ChiefVoice.picker($("voicePick")); else $("voicePick").parentElement.hidden = true; };
+  voiceScript.onerror = () => { $("voicePick").parentElement.hidden = true; };
+  document.head.append(voiceScript);
   // Chrome on Android only speaks after a user gesture; a silent utterance on the first press unlocks it.
   let primed = false;
   function primeSpeech() {
+    if (window.ChiefVoice) ChiefVoice.unlock();  // the natural voice needs a touch too
     if (primed || !("speechSynthesis" in window)) return;
     primed = true;
     const u = new SpeechSynthesisUtterance(" ");
     u.volume = 0;
     speechSynthesis.speak(u);
   }
-  $("testVoice").addEventListener("click", () => { primeSpeech(); speak("Hi, I'm Chief. Can you hear me?"); });
+  $("testVoice").addEventListener("click", () => {
+    primeSpeech();
+    if (!$("speak").checked) $("speak").checked = true;
+    speak(window.ChiefVoice ? ChiefVoice.TEST_LINE : "Hi, it's me, Chief. Can you hear me okay?", "happy");
+  });
 
   // ---- where you are: asked for only when you tap the button or a question needs it ---------
   let haveLocation = false, watchId = null, lastSent = null;
@@ -532,7 +548,7 @@
       const out = await api("/" + verb + "/" + encodeURIComponent(id), { method: "POST" });
       $("say").textContent = out.say;
       $("say").classList.remove("empty");
-      speak(out.say);
+      speak(out.say, (out.results || []).some((r) => "error" in r) ? "worried" : verb === "approve" ? "happy" : "calm");
     } catch (e) {
       setError(e.message);
     }
@@ -574,6 +590,7 @@
       if (sig !== lastPending) { lastPending = sig; renderPending(s.pending); }
       if (s.heard && !$("heard").textContent) $("heard").textContent = "You: " + s.heard;
       if (haveLocation !== !!s.location) { haveLocation = !!s.location; showLocation(); }
+      if (window.ChiefVoice) ChiefVoice.setNatural(!!s.tts);
       undoMark = s.undo ? s.undo.mark : "";
       $("undo").hidden = !s.undo;
       if (s.undo) $("undo").textContent = s.undo.label + (s.undo.seconds != null ? " (" + s.undo.seconds + "s)" : "");

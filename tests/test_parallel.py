@@ -201,7 +201,7 @@ def test_do_it_approves_only_the_most_recent_and_the_reply_says_what_is_pending(
     done = handle_utterance(rt, "do it")
     assert [c[0] for c in tools.calls] == ["create_event"]  # the trip, spoken last
     assert len(rt.gate.pending) == 1 and next(iter(rt.gate.pending.values())).skill == "audit"
-    assert "Done. 1 change(s) made." in done["say"] and "Waiting for your OK" in done["say"] and "audit" in done["say"]
+    assert "All done. I made 1 change." in done["say"] and "Waiting for your OK" in done["say"] and "audit" in done["say"]
 
 
 def test_approve_all_approves_everything_from_the_last_answer(rt, tools):

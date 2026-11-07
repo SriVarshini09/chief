@@ -220,7 +220,7 @@ def test_the_edit_is_recorded_without_marking_the_original_rejected(rt):
 def test_never_mind_skips_a_pending_proposal_and_writes_nothing(rt, tools, phrase):
     first = handle_utterance(rt, "how's my week")["proposal"]
     out = handle_utterance(rt, phrase)
-    assert out["say"].startswith("Okay, skipped") and rt.gate.pending == {}
+    assert out["say"].startswith("No problem, I've skipped") and rt.gate.pending == {}
     assert tools.calls == []
     assert next(r for r in rt.memory.records if r["key"] == first.key)["decision"] == "rejected"
 

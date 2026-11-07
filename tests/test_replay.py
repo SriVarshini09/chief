@@ -308,7 +308,7 @@ def test_the_story_survives_a_dead_network_in_offline_mode(tmp_path, recorded):
     rt = Runtime(cfg)  # get_tools builds ReplayTools + simulated writes from the file
     says = [handle_utterance(rt, p)["say"] for p, _ in STORY]
     assert says[0].startswith("Inbox:") and "draft reply to Sam" in says[1] and "slept under 6 hours" in says[2]
-    assert says[3].startswith("Done. 4 change(s) made.") and says[4].startswith("Prep for Acme") and says[5].startswith("Caltrain to Palo Alto")
+    assert says[3].startswith("All done. I made 4 changes.") and says[4].startswith("Prep for Acme") and says[5].startswith("Caltrain to Palo Alto")
     events = rt.bus.since(0)
     reads = [e for e in events if e.kind == "read"]
     assert reads and all(e.detail.get("cached") for e in reads)
@@ -325,7 +325,7 @@ def test_failover_story_with_live_down_reads_from_cache_and_refuses_writes(tmp_p
     week = handle_utterance(rt, "How's my week looking?")
     assert week["proposal"] and week["proposal"].actions
     done = handle_utterance(rt, "do it")
-    assert done["say"].startswith("That didn't go through")  # honest: live is down, so nothing was done
+    assert done["say"].startswith("I'm sorry, that didn't go through")  # honest: live is down, so nothing was done
     assert any(e.kind == "error" and "NOT done" in e.title for e in rt.bus.since(0))
     assert not [e for e in rt.bus.since(0) if e.kind == "write"]
 

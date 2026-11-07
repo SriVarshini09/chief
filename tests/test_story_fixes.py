@@ -16,7 +16,7 @@ def test_do_it_after_a_briefing_approves_the_real_proposal(rt, tools):
     handle_utterance(rt, "how's my week looking")  # a proposal with real actions
     handle_utterance(rt, "what's in my inbox")  # a read-only result afterwards
     out = handle_utterance(rt, "do it")
-    assert "4 change(s) made" in out["say"]
+    assert "I made 4 changes" in out["say"]
     assert any(c[0] == "create_event" for c in tools.calls)
 
 
