@@ -77,10 +77,10 @@ def test_a_failed_step_is_shown_again_and_not_proposed_twice(rt, tools, cards, m
 
 
 def test_results_text():
-    assert results_text([{"tool": "x", "result": {}}]) == "Done. 1 change(s) made."
+    assert results_text([{"tool": "x", "result": {}}]) == "All done. I made 1 change. Thanks for looking it over first."
     assert "Sending in 30 seconds" in results_text([{"tool": "send_email", "result": {"held": True, "seconds": 30}}])
     both = results_text([{"tool": "a", "result": {}}, {"tool": "b", "error": "offline"}])
-    assert "offline" in both and "1 change(s) went through" in both
+    assert "offline" in both and "1 change went through" in both
 
 
 # ---- stopping an email ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ def test_undo_restores_titles_and_removes_new_events(rt, tools):
     before = {k: (e.title, e.description) for k, e in tools.events.items()}
     out = handle_utterance(rt, "do it")
     assert "Say undo" in out["say"]
-    assert "Undone. 4 change(s) reversed." == handle_utterance(rt, "undo that")["say"]
+    assert "Undone. I've reversed 4 changes, so it's back the way it was." == handle_utterance(rt, "undo that")["say"]
     assert {k: (e.title, e.description) for k, e in tools.events.items()} == before
 
 
@@ -163,7 +163,7 @@ def test_a_pending_card_wins_over_undoing_finished_work(rt, tools):
     handle_utterance(rt, "do it")
     reply(rt)
     out = handle_utterance(rt, "undo")
-    assert out["say"].startswith("Okay, skipped") and rt.gate.last_undo  # the calendar change stays reversible
+    assert out["say"].startswith("No problem, I've skipped") and rt.gate.last_undo  # the calendar change stays reversible
 
 
 def test_an_unknown_change_is_not_offered_for_undo(rt):

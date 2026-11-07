@@ -99,7 +99,7 @@ def test_yes_does_not_approve_a_card_you_were_never_shown(rt, tools):
 def test_yes_after_a_question_still_means_the_card_you_saw(rt, tools):
     _say(rt, "how's my week looking")
     _say(rt, "what's in my inbox")
-    assert "change(s) made" in _say(rt, "yes")["say"]
+    assert "All done. I made" in _say(rt, "yes")["say"]
 
 
 def test_an_old_card_needs_its_button(rt, tools):

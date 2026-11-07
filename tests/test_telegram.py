@@ -80,7 +80,7 @@ def test_approve_runs_through_the_gate_and_removes_the_buttons(bot, api, tools):
     assert len(writes(tools)) == 4 and pid not in bot.rt.gate.pending
     assert api.named("answerCallbackQuery") == [{"callback_query_id": "cb1"}]
     assert api.named("editMessageReplyMarkup")[0]["reply_markup"] == {"inline_keyboard": []}
-    assert "Done. 4 change(s) made." in api.texts()
+    assert "All done. I made 4 changes. Thanks for looking it over first." in api.texts()
 
 
 def test_skip_changes_nothing_and_is_remembered(bot, api, tools):
@@ -101,7 +101,7 @@ def test_a_double_tap_runs_once(bot, api, tools):
 def test_a_typed_do_it_approves_the_latest(bot, api, tools):
     propose(bot)
     bot.handle(message("do it"))
-    assert len(writes(tools)) == 4 and any("change(s) made" in t for t in api.texts())
+    assert len(writes(tools)) == 4 and any("All done. I made" in t for t in api.texts())
 
 
 def test_a_stranger_can_do_nothing(bot, api, tools):
@@ -189,7 +189,7 @@ def test_an_approval_offers_an_undo_button_that_reverses_it(bot, api, tools):
     pid = propose(bot)
     before = {k: e.title for k, e in tools.events.items()}
     bot.handle(click(f"approve:{pid}"))
-    done = next(s for s in api.named("sendMessage") if s["text"].startswith("Done"))
+    done = next(s for s in api.named("sendMessage") if s["text"].startswith("All done"))
     assert undo_button(done)["text"] == "Undo"
     bot.handle(click(undo_button(done)["callback_data"]))
     assert {k: e.title for k, e in tools.events.items()} == before

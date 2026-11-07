@@ -230,6 +230,7 @@
     let plan = [], act = null, goal = null, arrived = false, nextRoutine = 6, yawGoal = .22, velocity = 0, speed = 0, phase = 0;
     let lift = 0, hopV = 0, waving = 0, stretch = 0, sitting = 0, gesture = 0, nod = 0, earFlick = 0, breath = 0;
     let gazeX = 0, gazeY = 0, gazeHold = 1, pointerAt = -9, clock = 0, sounds = [], now = 0;
+    let loudness = 0, loudUntil = 0;                                                       // a recorded voice drives the mouth directly
     let lookAtX = 0, lookAtY = 0, wave = 0, zAt = 0, night = options.night ? 1 : 0;
     let y = null, guiding = false, pointing = 0, shy = false, shrugging = 0, landed = 0;
 
@@ -482,6 +483,7 @@
       let open = stretch * .95;
       const sound = sounds[0];
       if (sound && clock >= sound.at) open = Math.max(open, Math.sin((clock - sound.at) / (sound.end - sound.at) * Math.PI) * sound.size);
+      if (clock < loudUntil) open = Math.max(open, loudness);
       pose.mouth = near(pose.mouth, open, 34, dt);
 
       if (options.onMove) options.onMove(x, y, size());
@@ -531,7 +533,9 @@
       },
       // A new sentence: a small movement of the hand and a nod, the way people talk.
       sentence() { gesture = rand(.6, 1); nod = -.05; if (Math.random() < .5) blinkAt = Math.min(blinkAt, .12); },
-      pauseSpeech() { sounds = []; nod = .07; },
+      pauseSpeech() { sounds = []; loudUntil = 0; nod = .07; },
+      // How loud the voice is right now (0 to 1), from the audio itself: the mouth opens with it.
+      loud(level) { loudness = clamp(level, 0, 1); loudUntil = clock + .15; },
       look(px, py) {
         const box = canvas.getBoundingClientRect();
         lookAtX = clamp((px - box.left - box.width / 2) / 320, -1, 1);

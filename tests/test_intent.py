@@ -13,14 +13,14 @@ def test_trigger_phrase_runs_the_skill(rt):
 def test_approve_words_apply_the_pending_proposal(rt, tools):
     handle_utterance(rt, "why am I so tired")
     out = handle_utterance(rt, "Do it.")
-    assert "change(s) made" in out["say"]
+    assert "All done. I made" in out["say"]
     assert any(t.startswith("Walk:") for t in (e.title for e in tools.events.values()))
 
 
 def test_skip_words_run_nothing(rt, tools):
     handle_utterance(rt, "audit")
     out = handle_utterance(rt, "not now")
-    assert out["say"] == "Okay, skipped."
+    assert out["say"] == "No problem, I've skipped that one."
     assert tools.calls == []
 
 
